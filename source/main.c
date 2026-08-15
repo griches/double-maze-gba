@@ -19,7 +19,7 @@
 // The original slides the ball over 0.4s. That's sluggish with a D-pad, where
 // there's no swipe gesture to perform first, so this is a little quicker.
 #define MOVE_FRAMES  12
-#define DEATH_FRAMES 90   // the iOS build waits 1.5s before restarting
+#define DEATH_FRAMES 76   // exactly the death animation; the fade follows it
 #define WIN_FRAMES   45   // ...and 1.0s before advancing; the fade adds the rest
 
 #define DEATH_ANIM_HOLD 4 // frames per death-animation frame
@@ -258,11 +258,6 @@ static void complete_level(void)
     save_store();
 }
 
-static void advance_level(void)
-{
-    load_level((g_level_index + 1) % LEVEL_COUNT);
-}
-
 //---------------------------------------------------------------------------
 // transitions
 
@@ -381,6 +376,38 @@ static void goto_state(AppState s)
     }
 }
 
+// The main loop pushes OAM at the end of a frame, which is too late for a
+// transition: the fade would come back up on the previous level's ball
+// positions and they'd jump a frame later. Transitions push them themselves.
+static void commit_sprites(void)
+{
+    if (g_state == APP_PLAY || g_state == APP_DEATH || g_state == APP_WIN)
+        update_sprites();
+
+    oam_copy(oam_mem, g_obj_buffer, 2);
+}
+
+static void fade_to_level(int index, int frames)
+{
+    fade_out(frames);
+    load_level(index);
+    commit_sprites();
+    fade_in(frames);
+}
+
+static void fade_to_state(AppState s, int frames)
+{
+    fade_out(frames);
+    goto_state(s);
+    commit_sprites();
+    fade_in(frames);
+}
+
+static int next_level_index(void)
+{
+    return (g_level_index + 1) % LEVEL_COUNT;
+}
+
 //---------------------------------------------------------------------------
 // per-state input
 
@@ -390,23 +417,17 @@ static void input_title(void)
     {
         audio_play(SND_PAGE);
         g_menu_cursor = g_save.last_level;
-        fade_out(FADE_MENU);
-        goto_state(APP_SELECT);
-        fade_in(FADE_MENU);
+        fade_to_state(APP_SELECT, FADE_MENU);
     }
     else if (key_hit(KEY_B))
     {
         audio_play(SND_PAGE);
-        fade_out(FADE_MENU);
-        goto_state(APP_INSTRUCTIONS);
-        fade_in(FADE_MENU);
+        fade_to_state(APP_INSTRUCTIONS, FADE_MENU);
     }
     else if (key_hit(KEY_SELECT))
     {
         audio_play(SND_PAGE);
-        fade_out(FADE_MENU);
-        goto_state(APP_CREDITS);
-        fade_in(FADE_MENU);
+        fade_to_state(APP_CREDITS, FADE_MENU);
     }
     else if (key_hit(KEY_START))
     {
@@ -425,9 +446,7 @@ static void input_page(void)
         key_hit(KEY_SELECT))
     {
         audio_play(SND_PAGE);
-        fade_out(FADE_MENU);
-        goto_state(APP_TITLE);
-        fade_in(FADE_MENU);
+        fade_to_state(APP_TITLE, FADE_MENU);
     }
 }
 
@@ -453,16 +472,12 @@ static void input_select(void)
     if (key_hit(KEY_A) || key_hit(KEY_START))
     {
         audio_play(SND_PAGE);
-        fade_out(FADE_MENU);
-        load_level(g_menu_cursor);
-        fade_in(FADE_MENU);
+        fade_to_level(g_menu_cursor, FADE_MENU);
     }
     else if (key_hit(KEY_B))
     {
         audio_play(SND_PAGE);
-        fade_out(FADE_MENU);
-        goto_state(APP_TITLE);
-        fade_in(FADE_MENU);
+        fade_to_state(APP_TITLE, FADE_MENU);
     }
 }
 
@@ -472,23 +487,17 @@ static void input_play(void)
     {
         audio_play(SND_PAGE);
         g_menu_cursor = g_level_index;
-        fade_out(FADE_MENU);
-        goto_state(APP_SELECT);
-        fade_in(FADE_MENU);
+        fade_to_state(APP_SELECT, FADE_MENU);
         return;
     }
     if (key_hit(KEY_START))
     {
-        fade_out(FADE_MENU);
-        advance_level();            // the iOS "skip" button
-        fade_in(FADE_MENU);
+        fade_to_level(next_level_index(), FADE_MENU);   // the iOS "skip"
         return;
     }
     if (key_hit(KEY_SELECT))
     {
-        fade_out(FADE_MENU);
-        load_level(g_level_index);  // restart
-        fade_in(FADE_MENU);
+        fade_to_level(g_level_index, FADE_MENU);        // restart
         return;
     }
 
@@ -586,6 +595,8 @@ int main(void)
     // also starts, and endlessly repeats, the death sequence.
     load_level(BOOT_LEVEL);
 #ifdef BOOT_DEATH
+    // Debug: kill a ball at boot so the death sequence, its fade and the
+    // reload all run for real without needing a button press.
     g_ball[0].alive = false;
     g_state = APP_DEATH;
     g_timer = DEATH_FRAMES;
@@ -619,24 +630,13 @@ int main(void)
 
         case APP_DEATH:
             if (--g_timer <= 0)
-            {
-#ifdef BOOT_DEATH
-                // Debug: loop the death sequence so tools/grab_screen.py can
-                // capture it without a way to inject button presses.
-                g_ball[0].alive = false;
-                g_timer = DEATH_FRAMES;
-#else
-                load_level(g_level_index);
-#endif
-            }
+                fade_to_level(g_level_index, FADE_LEVEL);
             break;
 
         case APP_WIN:
             if (--g_timer <= 0)
             {
-                fade_out(FADE_LEVEL);
-                advance_level();
-                fade_in(FADE_LEVEL);
+                fade_to_level(next_level_index(), FADE_LEVEL);
             }
             break;
         }

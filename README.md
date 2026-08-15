@@ -112,12 +112,17 @@ Like the original, the skin advances every two levels: `floor(index / 2) % 3`.
 
 ## Screen transitions
 
-Every screen change fades through black, using the GBA's brightness blend
+Every screen change fades through black -- menus, entering a level, skipping,
+restarting, finishing, and dying -- using the GBA's brightness blend
 (`BLDCNT` / `BLDY`) rather than anything drawn by hand -- it costs no CPU and
 covers all four backgrounds, the sprites and the backdrop in one go. Menu
 moves use a short fade; finishing a level gets a longer one, since it's
 punctuation rather than navigation. Completing a level also swaps the HUD line
 for a "LEVEL COMPLETE" banner during the pause.
+
+Transitions push OAM themselves, via `commit_sprites`. The main loop only
+writes it at the end of a frame, which is too late: the fade would come back
+up on the previous level's ball positions and they would jump a frame later.
 
 `fade_run` in main.c blocks while it runs. Nothing else needs to happen mid
 transition, and threading it through the state machine would buy nothing --
