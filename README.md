@@ -6,7 +6,8 @@ balls in that direction, and each is blocked independently by the walls on its
 own tile edges. Land on a hole and the level restarts; get both balls onto goal
 tiles at the same time and you advance.
 
-39 levels, carried over from the original along with its artwork. See
+40 levels, carried over from the original along with its artwork
+(level 35 re-authored -- see below). See
 [EXTRACTION.md](EXTRACTION.md) for how the rules and assets were recovered.
 
 ## Controls
@@ -65,7 +66,7 @@ source/
   render.c / render.h    tilemap painting, goal lighting, text, HUD
   audio.c / audio.h      maxmod wrapper: effects and looping music
   save.c / save.h        SRAM progress, checksummed
-  levels.c / levels.h    generated: 39 levels, tiles + decoded wall bitfields
+  levels.c / levels.h    generated: 40 levels, tiles + decoded wall bitfields
   skins.h                generated: backdrops, lit-goal lookup, sprite indices
   fontmap.h              generated: ASCII -> glyph lookup
 gfx/
@@ -74,8 +75,10 @@ gfx/
   title.png + .grit                        generated: title art, tiles + map
   font.png + .grit                         generated: 48 glyphs, 5x7 in 8x8
 audio/                   generated: 6 effects + looping music, for mmutil
+levels/                  levels authored here, overriding the iOS project
 tools/
   extract_levels.py      iOS level*.txt  -> source/levels.c
+  make_level35.py        authors and solves the replacement level 35
   make_assets.py         iOS artwork     -> gfx/*.png, source/skins.h
   make_audio.py          iOS audio       -> audio/*.wav
   preview_level.py       renders a level to PNG without running the ROM
@@ -179,6 +182,26 @@ detect the backup hardware. Getting it to survive is fiddlier than it looks:
 real reference from live code instead. If saving ever silently stops working,
 check `strings double_maze.gba | grep SRAM_V113` first.
 
+## Level 35
+
+`level35.txt` is empty in the original project -- the tile data was lost,
+though `level35POS.txt` survived with both start positions. `make_level35.py`
+builds a replacement around those positions and verifies it by breadth-first
+search over the joint state of both balls, which also yields the shortest
+solution. It scores candidates by how much longer the joint solution is than
+either ball's own route, so the two mazes actually interfere rather than being
+walked in parallel.
+
+The result lives in `levels/`, which `extract_levels.py` prefers over the iOS
+project, so the original repo stays untouched. Solution, 15 moves:
+
+```
+DOWN DOWN UP RIGHT UP UP UP LEFT LEFT RIGHT RIGHT DOWN DOWN RIGHT RIGHT
+```
+
+Restoring it grew the save's completed-level array, so `SAVE_VERSION` went to
+2 and existing progress resets once.
+
 ## Not done yet
 
 - **Ball rolling animation.** Movement is animated in code — the ball slides
@@ -187,5 +210,4 @@ check `strings double_maze.gba | grep SRAM_V113` first.
   rolling ball, which is probably why it was never wired up.
 - **Win feedback.** Death plays the real shrink-and-fade frames; the win is
   still just a chime and a pause.
-- **Level 35.** Still missing, still needs re-authoring.
 - **Custom levels and the level editor.** Dropped, by decision.

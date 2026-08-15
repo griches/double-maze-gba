@@ -79,10 +79,10 @@ feedback — a nice touch worth keeping.
 40 pairs of `levelN.txt` (120 comma-separated tile ids) and `levelNPOS.txt`
 (`leftX,leftY,rightX,rightY`).
 
-**39 are usable. `level35.txt` is empty** — zero bytes of tile data. Its
+**39 of the 40 are usable. `level35.txt` is empty** — zero bytes of tile data. Its
 `level35POS.txt` is intact, so the tile file was lost rather than never
-authored. The extractor skips it, which renumbers everything after it; if you
-want level 35 back it needs re-authoring.
+authored. It has since been re-authored -- see the Level 35 section of the
+README -- so the GBA build ships all 40.
 
 Everything else validates clean: no unknown tile ids, no start position on a
 death tile, every level has at least two goals.
@@ -180,7 +180,8 @@ lockout during the step animation or hold-to-repeat will outrun it.
 
 ## Decisions taken
 
-1. **Level 35** — dropped. Shipping 39 levels, renumbered contiguously.
+1. **Level 35** — originally dropped, later re-authored from the surviving
+   start positions and verified solvable. Shipping all 40.
 2. **Roll animation** — ball stays static for now. `move0001-0022` is extracted
    and available whenever it's worth wiring up.
 3. **Tile skins** — all three carried across (purple, orange, greentile), with

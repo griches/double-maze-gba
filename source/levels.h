@@ -9,7 +9,7 @@
 #define GRID_W 15
 #define GRID_H 8
 #define GRID_AREA (GRID_W * GRID_H)
-#define LEVEL_COUNT 39
+#define LEVEL_COUNT 40
 
 // Per-tile bitfield. A WALL_* bit means you may NOT leave the tile that way;
 // entering a tile additionally requires its opposite edge to be open.

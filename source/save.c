@@ -24,7 +24,7 @@ static void keep_save_signature(void)
 }
 
 #define SAVE_MAGIC   0x324D4244u   // 'DBM2'
-#define SAVE_VERSION 1
+#define SAVE_VERSION 2   // bumped when level 35 was restored: completed[] grew
 
 typedef struct SaveBlock
 {

@@ -16,6 +16,11 @@ import sys
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_SRC = "/Users/garyriches/Documents/Source/DoubleMaze/DoubleMaze"
 
+# Levels authored here rather than recovered from the iOS project. Anything in
+# this directory wins, which is how the lost level 35 gets replaced without
+# touching the original repo. See tools/make_level35.py.
+OVERRIDE_DIR = os.path.join(HERE, "levels")
+
 GRID_W = 15
 GRID_H = 8
 GRID_AREA = GRID_W * GRID_H
@@ -66,11 +71,22 @@ def read_ints(path):
     return [int(p) for p in raw.split(",") if p.strip() != ""]
 
 
+def source_for(src, name):
+    """Prefer an authored level over the original project's copy."""
+    override = os.path.join(OVERRIDE_DIR, name)
+    if os.path.exists(override):
+        return override, True
+    return os.path.join(src, name), False
+
+
 def load(src):
     levels, problems = [], []
+    authored = []
     for n in range(1, LEVEL_COUNT + 1):
-        tpath = os.path.join(src, "level%d.txt" % n)
-        ppath = os.path.join(src, "level%dPOS.txt" % n)
+        tpath, is_override = source_for(src, "level%d.txt" % n)
+        ppath, _ = source_for(src, "level%dPOS.txt" % n)
+        if is_override:
+            authored.append(n)
 
         if not os.path.exists(tpath):
             problems.append("level %d: level%d.txt missing" % (n, n))
@@ -112,6 +128,10 @@ def load(src):
                             % (n, len(goals)))
 
         levels.append({"n": n, "tiles": tiles, "pos": pos, "goals": goals})
+
+    if authored:
+        problems.append("authored locally rather than from the iOS project: "
+                        + ", ".join("level %d" % n for n in authored))
 
     return levels, problems
 
