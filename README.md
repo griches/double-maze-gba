@@ -10,6 +10,17 @@ tiles at the same time and you advance.
 (level 35 re-authored -- see below). See
 [EXTRACTION.md](EXTRACTION.md) for how the rules and assets were recovered.
 
+![Title screen](docs/screenshots/title.png)
+
+| | |
+|---|---|
+| ![Level 5](docs/screenshots/gameplay.png) | ![Level 14](docs/screenshots/gameplay2.png) |
+| ![Level select](docs/screenshots/level-select.png) | ![Instructions](docs/screenshots/instructions.png) |
+| ![Credits](docs/screenshots/credits.png) | ![You died](docs/screenshots/died.png) |
+
+The three tile skins cycle every two levels, as they do in the original. All
+screenshots are captured from the running ROM by `tools/grab_screen.py`.
+
 ## Controls
 
 **Title:** A to play, B for instructions, SELECT for credits, START toggles
@@ -82,6 +93,7 @@ tools/
   make_assets.py         iOS artwork     -> gfx/*.png, source/skins.h
   make_audio.py          iOS audio       -> audio/*.wav
   preview_level.py       renders a level to PNG without running the ROM
+docs/screenshots/        captured from the ROM, used by this README
 ```
 
 ## How the screen is put together
