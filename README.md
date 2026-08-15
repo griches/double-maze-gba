@@ -255,6 +255,24 @@ DOWN DOWN UP RIGHT UP UP UP LEFT LEFT RIGHT RIGHT DOWN DOWN RIGHT RIGHT
 Restoring it grew the save's completed-level array, so `SAVE_VERSION` went to
 2 and existing progress resets once.
 
+## Credits and assets
+
+From the original iOS release:
+
+- **Programming** — Gary Riches
+- **Design** — Eric Reckling
+- **Music** — Kevin MacLeod
+
+Everything under `gfx/`, `audio/` and the level data is derived from that
+release. `tools/` regenerates it all from the iOS project; the checked-in
+copies are build inputs, so a clone builds without it.
+
+The background music is Kevin MacLeod's, re-encoded to 8-bit mono for the
+GBA's mixer. His work is normally released under Creative Commons Attribution
+— credit is given here, on the in-game credits screen, and in the ROM. The
+sound effects come from a stock library used in the 2009 release; if you fork
+this, check that library's terms before redistributing `audio/`.
+
 ## Not done yet
 
 - **Ball rolling animation.** Movement is animated in code — the ball slides
