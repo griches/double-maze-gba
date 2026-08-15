@@ -9,10 +9,12 @@
 #include "tiles_green.h"
 #include "font.h"
 #include "title.h"
+#include "walls.h"
 
-#define CBB_BG   0
-#define SBB_ART  30   // BG0: tilemap art (grid, title)
-#define SBB_TEXT 29   // BG1: text overlay, transparent everywhere else
+#define CBB_BG    0
+#define SBB_ART   30   // BG0: tilemap art (grid, title)
+#define SBB_TEXT  29   // BG1: text overlay, transparent everywhere else
+#define SBB_WALLS 28   // BG2: wall bars straddling the cell boundaries
 
 #define MAP_PITCH  32                          // a 32x32 screenblock's row stride
 #define SKIN_TILES (MT_COUNT * MT_TILES)       // 108 hardware tiles per skin
@@ -29,10 +31,12 @@
 #define SKIN_BASE  0
 #define FONT_BASE  (SKIN_COUNT * SKIN_TILES)   // 252
 #define TITLE_BASE (FONT_BASE + FONT_GLYPH_COUNT)
+#define WALL_BASE  (TITLE_BASE + 134)          // after the title art
 
 // BG palette banks.
 #define FONT_BANK  3
 #define TITLE_BANK 4
+#define WALL_BANK  5
 
 static const unsigned int *const skin_tiles[SKIN_COUNT] = {
     tiles_purpleTiles, tiles_orangeTiles, tiles_greenTiles,
@@ -52,6 +56,11 @@ static inline SCR_ENTRY *art_map(void)
 static inline SCR_ENTRY *text_map(void)
 {
     return se_mem[SBB_TEXT];
+}
+
+static inline SCR_ENTRY *wall_map(void)
+{
+    return se_mem[SBB_WALLS];
 }
 
 // The space glyph is blank, which makes it the transparent filler for the
@@ -79,14 +88,19 @@ void render_init(void)
     memcpy32(BG_TILE(TITLE_BASE), titleTiles, titleTilesLen / 4);
     memcpy16(&pal_bg_mem[TITLE_BANK * 16], titlePal, 16);
 
+    memcpy32(BG_TILE(WALL_BASE), wallsTiles, wallsTilesLen / 4);
+    memcpy16(&pal_bg_mem[WALL_BANK * 16], wallsPal, 16);
+
     // Text gets its own layer. A tilemap cell shows exactly one tile, so
     // drawing glyphs into the art layer would punch them through it -- and
     // their transparent pixels fall to the backdrop colour, which is what put
     // black boxes behind every word. On BG1 the gaps show BG0 instead.
     REG_BG0CNT = BG_CBB(CBB_BG) | BG_SBB(SBB_ART) | BG_4BPP | BG_REG_32x32
-               | BG_PRIO(1);
+               | BG_PRIO(3);
     REG_BG1CNT = BG_CBB(CBB_BG) | BG_SBB(SBB_TEXT) | BG_4BPP | BG_REG_32x32
-               | BG_PRIO(0);
+               | BG_PRIO(1);
+    REG_BG2CNT = BG_CBB(CBB_BG) | BG_SBB(SBB_WALLS) | BG_4BPP | BG_REG_32x32
+               | BG_PRIO(2);
 
     // Nothing here scrolls, but the scroll registers are write-only and their
     // power-on contents aren't guaranteed on real hardware -- so pin them.
@@ -94,10 +108,14 @@ void render_init(void)
     REG_BG0VOFS = 0;
     REG_BG1HOFS = 0;
     REG_BG1VOFS = 0;
+    REG_BG2HOFS = 0;
+    REG_BG2VOFS = 0;
 
     render_text_clear();
+    render_walls_clear();
 
-    REG_DISPCNT = DCNT_MODE0 | DCNT_BG0 | DCNT_BG1 | DCNT_OBJ | DCNT_OBJ_1D;
+    REG_DISPCNT = DCNT_MODE0 | DCNT_BG0 | DCNT_BG1 | DCNT_BG2
+                | DCNT_OBJ | DCNT_OBJ_1D;
 }
 
 //--- gameplay --------------------------------------------------------------
@@ -106,6 +124,55 @@ static inline u16 void_entry(int skin)
 {
     // Tile id 6 is the hole/void, which draws as pure backdrop.
     return (SKIN_BASE + skin * SKIN_TILES + 6 * MT_TILES) | SE_PALBANK(skin);
+}
+
+void render_walls_clear(void)
+{
+    SCR_ENTRY *m = wall_map();
+    u16 blank = WALL_BASE | SE_PALBANK(WALL_BANK);   // mask 0: no edges
+
+    for (int i = 0; i < MAP_PITCH * MAP_PITCH; i++)
+        m[i] = blank;
+}
+
+static inline u8 edges_of(const LevelData *lv, int cx, int cy)
+{
+    return tile_wall_edges[lv->tiles[cy * GRID_W + cx]];
+}
+
+// A boundary is declared by whichever side of it owns the wall, but the bar
+// straddles both cells. So a cell shows its own edges plus the facing edges of
+// its four neighbours; each contributes the half that falls inside it, and the
+// two halves meet on the line between them.
+static u8 wall_mask(const LevelData *lv, int cx, int cy)
+{
+    u8 mask = edges_of(lv, cx, cy);
+
+    if (cy > 0 && (edges_of(lv, cx, cy - 1) & EDGE_BOTTOM))
+        mask |= EDGE_TOP;
+    if (cy < GRID_H - 1 && (edges_of(lv, cx, cy + 1) & EDGE_TOP))
+        mask |= EDGE_BOTTOM;
+    if (cx > 0 && (edges_of(lv, cx - 1, cy) & EDGE_RIGHT))
+        mask |= EDGE_LEFT;
+    if (cx < GRID_W - 1 && (edges_of(lv, cx + 1, cy) & EDGE_LEFT))
+        mask |= EDGE_RIGHT;
+
+    return mask;
+}
+
+static void render_cell_walls(const LevelData *lv, int cx, int cy)
+{
+    u16 base = WALL_BASE + wall_mask(lv, cx, cy) * MT_TILES;
+    u16 bank = SE_PALBANK(WALL_BANK);
+
+    SCR_ENTRY *m = wall_map();
+    int col = cx * 2;
+    int row = GRID_TOP_ROW + cy * 2;
+
+    m[row * MAP_PITCH + col]           = (base + 0) | bank;
+    m[row * MAP_PITCH + col + 1]       = (base + 1) | bank;
+    m[(row + 1) * MAP_PITCH + col]     = (base + 2) | bank;
+    m[(row + 1) * MAP_PITCH + col + 1] = (base + 3) | bank;
 }
 
 void render_cell(const LevelData *lv, int skin, int cx, int cy, bool lit)
@@ -140,8 +207,13 @@ void render_level(const LevelData *lv, int skin)
     render_plain(skin);
 
     for (int cy = 0; cy < GRID_H; cy++)
+    {
         for (int cx = 0; cx < GRID_W; cx++)
+        {
             render_cell(lv, skin, cx, cy, false);
+            render_cell_walls(lv, cx, cy);
+        }
+    }
 }
 
 void render_hud(int level_display_number)
@@ -165,6 +237,7 @@ void render_plain(int skin)
         m[i] = blank;
 
     render_text_clear();
+    render_walls_clear();
     pal_bg_mem[0] = skin_backdrop[skin];
 }
 
@@ -187,6 +260,7 @@ void render_title_art(void)
                 | SE_PALBANK(TITLE_BANK);
 
     render_text_clear();
+    render_walls_clear();
 
     // Columns 30-31 are off-screen; leave them as whatever the caller set.
     pal_bg_mem[0] = titlePal[0];

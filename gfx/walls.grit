@@ -1,0 +1,8 @@
+# wall edges: one 16x16 metatile per edge combination
+# The Makefile appends -fts, so no output format here.
+
+-gt
+-gB4
+-Mw2 -Mh2   # 16x16 metatiles -> 4 hardware tiles each
+-p
+-pn16

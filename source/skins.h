@@ -31,6 +31,18 @@ static const u8 mt_toplip[MT_COUNT] = {
     0, 1, 2, 3, 4, 5, 21, 22, 23, 24, 25, 11, 12, 13, 14, 26, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26
 };
 
+// Which edges each tile id walls off, as EDGE_* bits. Note tile 15
+// draws all four walls but is passable in every direction -- that
+// inconsistency is in the original, and this table is about looks.
+#define EDGE_TOP    1
+#define EDGE_RIGHT  2
+#define EDGE_BOTTOM 4
+#define EDGE_LEFT   8
+
+static const u8 tile_wall_edges[16] = {
+    0, 1, 2, 4, 8, 0, 0, 1, 2, 4, 8, 1, 2, 4, 8, 15
+};
+
 // Whether a tile paints a floor or target of its own -- and so has a
 // lip that overhangs the cell below it.
 static const u8 tile_draws_image[16] = {

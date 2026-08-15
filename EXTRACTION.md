@@ -188,12 +188,19 @@ lockout during the step animation or hold-to-repeat will outrun it.
 4. **Custom levels and the editor** — dropped. No HTTP downloader, no in-app
    editor on a cartridge.
 
-One deliberate visual deviation: the iOS renderer draws the whole 44x44 wall
-image at 1.375x the cell, centred, so the bar inside it straddles the boundary
-and overhangs both neighbours. A tilemap can't overhang. Simply scaling the
-image down to the cell loses what that 1.375 was buying -- the bar comes out
-68% of the cell wide and 3px thick instead of 94% and 4px, and reads as a stray
-stick floating inside the tile. So the GBA build crops the bar out of its
-frame, scales it at the original's proportions, and seats it flush against the
-edge it blocks: same size and weight, wholly inside the cell rather than
-straddling it.
+Walls needed a structural change rather than a fudge. iOS draws the whole
+44x44 wall image at 1.375x the cell, centred, so the bar inside it straddles
+the boundary and overhangs both neighbours -- which is why walls read as
+sitting on the line between two tiles rather than inside either one. A single
+tilemap layer can't do that: seating the bar wholly inside its own cell puts
+it two pixels too far in, and clipping it at the boundary halves its
+thickness.
+
+The GBA build gives walls their own background layer. The art is identical in
+every skin, so it's 16 metatiles in total -- one per combination of blocked
+edges. Each cell draws only the half of a bar that falls inside it, and the
+cell on the other side of the boundary draws the matching half; together they
+form the full-thickness bar on the line. A cell's mask is its own walled edges
+plus the facing edges of its four neighbours, since a boundary is declared by
+only one of the two cells that share it. Wall positions now match the original
+pixel for pixel.

@@ -124,14 +124,35 @@ def make_bars(ios):
 
 
 def bar_position(edge, bar):
-    """Seat a bar flush against the edge it blocks, centred along it."""
+    """Centre a bar on the edge it blocks, the way iOS does.
+
+    The original draws the bar straddling the boundary, so half of it sits in
+    each of the two cells it divides. Seating it wholly inside the cell instead
+    reads as two pixels too far in -- the bar looks like it belongs to the tile
+    rather than to the line between tiles. Half of it falls outside the cell
+    and gets clipped, since a tilemap can't draw into its neighbour.
+    """
     if edge == "top":
-        return ((CELL - bar.width) // 2, 0)
+        return ((CELL - bar.width) // 2, -(bar.height // 2))
     if edge == "bottom":
-        return ((CELL - bar.width) // 2, CELL - bar.height)
+        return ((CELL - bar.width) // 2, CELL - (bar.height // 2))
     if edge == "left":
-        return (0, (CELL - bar.height) // 2)
-    return (CELL - bar.width, (CELL - bar.height) // 2)      # right
+        return (-(bar.width // 2), (CELL - bar.height) // 2)
+    return (CELL - (bar.width // 2), (CELL - bar.height) // 2)   # right
+
+
+def paste_bar(cell, bar, x, y):
+    """Composite a bar that may hang off the top or left of the cell."""
+    if x < 0:
+        bar = bar.crop((-x, 0, bar.width, bar.height))
+        x = 0
+    if y < 0:
+        bar = bar.crop((0, -y, bar.width, bar.height))
+        y = 0
+    if x >= CELL or y >= CELL:
+        return
+    bar = bar.crop((0, 0, min(bar.width, CELL - x), min(bar.height, CELL - y)))
+    cell.alpha_composite(bar, (x, y))
 
 
 def compose_cell(floor, goal, edges, bars, top_lip=None):
@@ -147,7 +168,7 @@ def compose_cell(floor, goal, edges, bars, top_lip=None):
         cell.alpha_composite(goal)
     for edge in edges:
         bar = bars[edge]
-        cell.alpha_composite(bar, bar_position(edge, bar))
+        paste_bar(cell, bar, *bar_position(edge, bar))
     return cell
 
 
@@ -185,12 +206,13 @@ def build_skin(ios, skin, prefix, out_name):
     goal_on, _ = tile_faces(load(ios, prefix + "_target_on.png"))
     bars = make_bars(ios)
 
-    # The floor and target images share the same bevel, so one lip covers both.
+    # Walls are drawn on their own layer now -- see build_walls -- so the skin
+    # tiles carry only floor, target and lip.
     def cell(tid, goal_art, top_lip=None):
         return compose_cell(
             floor if tid in FLOOR_IDS else None,
             goal_art if tid in GOAL_IDS else None,
-            WALL_EDGES_FOR_ID.get(tid, ()), bars, top_lip,
+            (), bars, top_lip,
         )
 
     cells = []
@@ -276,6 +298,40 @@ def build_title(ios):
     with open(os.path.join(GFX, "title.grit"), "w") as fh:
         fh.write("\n".join(lines))
     print("wrote", os.path.join(GFX, "title.png"))
+
+
+EDGE_BITS = {"top": 1, "right": 2, "bottom": 4, "left": 8}
+
+
+def build_walls(ios):
+    """One tileset of every wall-edge combination, shared by all three skins.
+
+    Each cell draws only the half of a bar that falls inside it; the cell on
+    the other side of the boundary draws the matching half. Together they make
+    the full-thickness bar sitting on the line between them, which is what iOS
+    gets by letting the oversized wall image overhang its neighbour.
+
+    The wall art is identical in every skin, so this is 16 metatiles in total
+    rather than 16 per skin.
+    """
+    bars = make_bars(ios)
+    cells = []
+    for mask in range(16):
+        cell = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+        for edge, bit in EDGE_BITS.items():
+            if mask & bit:
+                bar = bars[edge]
+                paste_bar(cell, bar, *bar_position(edge, bar))
+        cells.append(cell)
+
+    strip = Image.new("RGBA", (CELL * 16, CELL), (0, 0, 0, 0))
+    for i, c in enumerate(cells):
+        strip.alpha_composite(c, (i * CELL, 0))
+
+    quantise(strip).save(os.path.join(GFX, "walls.png"))
+    write_grit("walls", metatile=True,
+               comment="wall edges: one 16x16 metatile per edge combination")
+    print("wrote", os.path.join(GFX, "walls.png"))
 
 
 # A 5x7 pixel font, drawn by hand rather than rasterised from a TTF -- at this
@@ -447,6 +503,20 @@ def write_skins_header(ios):
             for m in range(MT_COUNT)),
         "};",
         "",
+        "// Which edges each tile id walls off, as EDGE_* bits. Note tile 15",
+        "// draws all four walls but is passable in every direction -- that",
+        "// inconsistency is in the original, and this table is about looks.",
+        "#define EDGE_TOP    1",
+        "#define EDGE_RIGHT  2",
+        "#define EDGE_BOTTOM 4",
+        "#define EDGE_LEFT   8",
+        "",
+        "static const u8 tile_wall_edges[16] = {",
+        "    " + ", ".join(
+            str(sum(EDGE_BITS[e] for e in WALL_EDGES_FOR_ID.get(i, ())))
+            for i in range(16)),
+        "};",
+        "",
         "// Whether a tile paints a floor or target of its own -- and so has a",
         "// lip that overhangs the cell below it.",
         "static const u8 tile_draws_image[16] = {",
@@ -479,6 +549,7 @@ def main():
         build_skin(ios, skin, prefix, "tiles_" + skin)
     build_sprites(ios)
     build_title(ios)
+    build_walls(ios)
     build_font()
     write_fontmap()
     write_skins_header(ios)

@@ -40,6 +40,9 @@ void render_title_art(void);
 // Wipes the whole text layer back to transparent.
 void render_text_clear(void);
 
+// Wipes the wall layer.
+void render_walls_clear(void);
+
 void render_text(int col, int row, const char *s);
 void render_text_centred(int row, const char *s);
 void render_clear_row(int row);
