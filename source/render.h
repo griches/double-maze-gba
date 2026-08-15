@@ -29,6 +29,9 @@ void render_cell(const LevelData *lv, int skin, int cx, int cy, bool lit);
 
 void render_hud(int level_display_number);
 
+// Temporarily replaces the HUD line, e.g. on level completion.
+void render_banner(const char *s);
+
 //--- menus -----------------------------------------------------------------
 
 // Fills the map with a skin's void tile and sets the backdrop, giving a plain
@@ -36,6 +39,9 @@ void render_hud(int level_display_number);
 void render_plain(int skin);
 
 void render_title_art(void);
+
+// Brightness fade across the whole screen: 0 normal, 16 fully black.
+void render_fade(int level);
 
 // Wipes the whole text layer back to transparent.
 void render_text_clear(void);

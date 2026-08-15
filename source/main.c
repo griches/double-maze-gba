@@ -20,9 +20,14 @@
 // there's no swipe gesture to perform first, so this is a little quicker.
 #define MOVE_FRAMES  12
 #define DEATH_FRAMES 90   // the iOS build waits 1.5s before restarting
-#define WIN_FRAMES   60   // ...and 1.0s before advancing
+#define WIN_FRAMES   45   // ...and 1.0s before advancing; the fade adds the rest
 
 #define DEATH_ANIM_HOLD 4 // frames per death-animation frame
+
+// Menu moves are frequent, so they fade quickly; finishing a level gets a
+// longer one because it's punctuation rather than navigation.
+#define FADE_MENU   8
+#define FADE_LEVEL 14
 
 #define SELECT_COLS 7   // 7 cells of 4 columns, plus room for the cursor
 #define SELECT_ROWS ((LEVEL_COUNT + SELECT_COLS - 1) / SELECT_COLS)
@@ -259,6 +264,25 @@ static void advance_level(void)
 }
 
 //---------------------------------------------------------------------------
+// transitions
+
+// Blocking on purpose: nothing else needs to happen while the screen is
+// fading, and threading it through the state machine would buy nothing. The
+// audio mixer still has to be serviced every frame, hence audio_frame here.
+static void fade_run(int from, int to, int frames)
+{
+    for (int f = 1; f <= frames; f++)
+    {
+        VBlankIntrWait();
+        render_fade(from + (to - from) * f / frames);
+        audio_frame();
+    }
+}
+
+static void fade_out(int frames) { fade_run(0, 16, frames); }
+static void fade_in(int frames)  { fade_run(16, 0, frames); }
+
+//---------------------------------------------------------------------------
 // menus
 
 static void draw_title(void)
@@ -366,17 +390,23 @@ static void input_title(void)
     {
         audio_play(SND_PAGE);
         g_menu_cursor = g_save.last_level;
+        fade_out(FADE_MENU);
         goto_state(APP_SELECT);
+        fade_in(FADE_MENU);
     }
     else if (key_hit(KEY_B))
     {
         audio_play(SND_PAGE);
+        fade_out(FADE_MENU);
         goto_state(APP_INSTRUCTIONS);
+        fade_in(FADE_MENU);
     }
     else if (key_hit(KEY_SELECT))
     {
         audio_play(SND_PAGE);
+        fade_out(FADE_MENU);
         goto_state(APP_CREDITS);
+        fade_in(FADE_MENU);
     }
     else if (key_hit(KEY_START))
     {
@@ -395,7 +425,9 @@ static void input_page(void)
         key_hit(KEY_SELECT))
     {
         audio_play(SND_PAGE);
+        fade_out(FADE_MENU);
         goto_state(APP_TITLE);
+        fade_in(FADE_MENU);
     }
 }
 
@@ -421,12 +453,16 @@ static void input_select(void)
     if (key_hit(KEY_A) || key_hit(KEY_START))
     {
         audio_play(SND_PAGE);
+        fade_out(FADE_MENU);
         load_level(g_menu_cursor);
+        fade_in(FADE_MENU);
     }
     else if (key_hit(KEY_B))
     {
         audio_play(SND_PAGE);
+        fade_out(FADE_MENU);
         goto_state(APP_TITLE);
+        fade_in(FADE_MENU);
     }
 }
 
@@ -436,17 +472,23 @@ static void input_play(void)
     {
         audio_play(SND_PAGE);
         g_menu_cursor = g_level_index;
+        fade_out(FADE_MENU);
         goto_state(APP_SELECT);
+        fade_in(FADE_MENU);
         return;
     }
     if (key_hit(KEY_START))
     {
+        fade_out(FADE_MENU);
         advance_level();            // the iOS "skip" button
+        fade_in(FADE_MENU);
         return;
     }
     if (key_hit(KEY_SELECT))
     {
+        fade_out(FADE_MENU);
         load_level(g_level_index);  // restart
+        fade_in(FADE_MENU);
         return;
     }
 
@@ -501,6 +543,7 @@ static void settle_step(void)
         g_timer = WIN_FRAMES;
         complete_level();
         audio_play(SND_COMPLETE);
+        render_banner("LEVEL COMPLETE");
     }
     else if ((left_home && !g_was_on_goal[0]) ||
              (right_home && !g_was_on_goal[1]))
@@ -527,6 +570,11 @@ int main(void)
     memcpy16(pal_obj_mem, ballPal, 16);
     oam_init(g_obj_buffer, 128);
 
+#ifdef BOOT_FADE
+    // Debug: park the screen at a fixed fade level so the capture pipeline
+    // can see one. BLDY is write-only, so the level can't be read back.
+    render_fade(BOOT_FADE);
+#endif
 #if defined(BOOT_SCREEN)
     // Debug: boot straight to a menu screen, since the capture pipeline has
     // no way to press buttons. e.g. make DEFINES=-DBOOT_SCREEN=APP_CREDITS
@@ -585,7 +633,11 @@ int main(void)
 
         case APP_WIN:
             if (--g_timer <= 0)
+            {
+                fade_out(FADE_LEVEL);
                 advance_level();
+                fade_in(FADE_LEVEL);
+            }
             break;
         }
 

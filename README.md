@@ -110,6 +110,30 @@ from the matching iOS background image.
 
 Like the original, the skin advances every two levels: `floor(index / 2) % 3`.
 
+## Screen transitions
+
+Every screen change fades through black, using the GBA's brightness blend
+(`BLDCNT` / `BLDY`) rather than anything drawn by hand -- it costs no CPU and
+covers all four backgrounds, the sprites and the backdrop in one go. Menu
+moves use a short fade; finishing a level gets a longer one, since it's
+punctuation rather than navigation. Completing a level also swaps the HUD line
+for a "LEVEL COMPLETE" banner during the pause.
+
+`fade_run` in main.c blocks while it runs. Nothing else needs to happen mid
+transition, and threading it through the state machine would buy nothing --
+but it still has to call `audio_frame` every frame or the mixer starves.
+
+`BLDY` is write-only, so a capture can't read back how far a fade has got.
+`tools/grab_screen.py --fade N` applies a level manually, and prints `BLDCNT`
+so the blend flags themselves can be checked. `make DEFINES="-DBOOT_LEVEL=0
+-DBOOT_FADE=8"` parks the screen mid-fade.
+
+Other options the hardware offers, if the fade ever gets boring: mosaic
+(`MOSAIC`) to pixelate in and out, a window wipe (`WIN0`) to iris or wipe the
+picture away, or a scroll between two boards held side by side in a 64x32 map.
+A per-scanline `BG0HOFS` change under an HBlank interrupt is what it would take
+to approximate the page curl the iOS version uses.
+
 ## Debugging
 
 mGBA ships a GDB stub. In mGBA: **Tools → Start GDB server** (default port

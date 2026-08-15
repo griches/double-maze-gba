@@ -216,6 +216,13 @@ void render_level(const LevelData *lv, int skin)
     }
 }
 
+// Replaces the HUD line for a moment -- used for "LEVEL COMPLETE".
+void render_banner(const char *s)
+{
+    render_clear_row(HUD_ROW);
+    render_text_centred(HUD_ROW, s);
+}
+
 void render_hud(int level_display_number)
 {
     char buf[10] = "LEVEL 00";
@@ -264,6 +271,21 @@ void render_title_art(void)
 
     // Columns 30-31 are off-screen; leave them as whatever the caller set.
     pal_bg_mem[0] = titlePal[0];
+}
+
+// Hardware brightness fade over every layer, sprites and the backdrop
+// included. 0 is the normal picture, 16 is fully black.
+void render_fade(int level)
+{
+    if (level <= 0)
+    {
+        REG_BLDCNT = BLD_OFF;
+        REG_BLDY = 0;
+        return;
+    }
+
+    REG_BLDCNT = BLD_ALL | BLD_BACKDROP | BLD_BLACK;
+    REG_BLDY = (level > 16) ? 16 : level;
 }
 
 void render_text_clear(void)

@@ -126,7 +126,7 @@ def tile_pixel(vram, char_base, tile, x, y):
     return (byte & 0xF) if (x & 1) == 0 else (byte >> 4)
 
 
-def render(mem):
+def render(mem, fade=0):
     io, vram, pal, oam = mem["io"], mem["vram"], mem["pal"], mem["oam"]
 
     dispcnt = struct.unpack_from("<H", io, 0x00)[0]
@@ -213,7 +213,18 @@ def render(mem):
                             if 0 <= X < SCREEN_W and 0 <= Y < SCREEN_H:
                                 px[X, Y] = objpal[bank * 16 + idx]
 
-    return img
+    # Brightness fade. BLDCNT is readable so the blend flags can be checked,
+    # but BLDY is write-only -- the emulator returns garbage for it -- so the
+    # level has to be supplied by the caller.
+    bldcnt = struct.unpack_from("<H", io, 0x50)[0]
+    if (bldcnt & 0x00C0) == 0x00C0 and fade:
+        y = max(0, min(16, fade))
+        for yy in range(SCREEN_H):
+            for xx in range(SCREEN_W):
+                r, g, b = px[xx, yy]
+                px[xx, yy] = (r - r * y // 16, g - g * y // 16, b - b * y // 16)
+
+    return img, bldcnt
 
 
 def main():
@@ -222,6 +233,9 @@ def main():
     ap.add_argument("--port", type=int, default=2345)
     ap.add_argument("--elf", default="double_maze.elf")
     ap.add_argument("--rom", help="launch this ROM in mGBA, capture, then quit")
+    ap.add_argument("--fade", type=int, default=0,
+                    help="apply this brightness-fade level (BLDY is write-only "
+                         "so it can't be read back)")
     ap.add_argument("--delay", type=float, default=3.0,
                     help="seconds to let the ROM run before capturing")
     args = ap.parse_args()
@@ -241,8 +255,9 @@ def main():
         time.sleep(args.delay)
 
     try:
-        render(dump(args.port, args.elf)).save(args.out)
-        print("wrote", args.out)
+        img, bldcnt = render(dump(args.port, args.elf), args.fade)
+        img.save(args.out)
+        print("wrote %s  (BLDCNT=0x%04X)" % (args.out, bldcnt))
     finally:
         if proc:
             proc.send_signal(signal.SIGTERM)
