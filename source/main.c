@@ -30,7 +30,8 @@
 typedef enum AppState
 {
     APP_TITLE,
-    APP_HELP,
+    APP_INSTRUCTIONS,
+    APP_CREDITS,
     APP_SELECT,
     APP_PLAY,
     APP_DEATH,
@@ -263,10 +264,11 @@ static void advance_level(void)
 static void draw_title(void)
 {
     render_title_art();
-    render_text_centred(13, "PRESS START");
-    render_text_centred(15, "A - PLAY   B - HOW TO");
-    render_text_centred(17, g_save.music_on ? "SELECT - MUSIC ON"
-                                            : "SELECT - MUSIC OFF");
+    render_text_centred(12, "A - PLAY");
+    render_text_centred(14, "B - INSTRUCTIONS");
+    render_text_centred(16, "SELECT - CREDITS");
+    render_text_centred(18, g_save.music_on ? "START - MUSIC ON"
+                                            : "START - MUSIC OFF");
 #ifdef AUDIO_DEBUG
     // Reports whether the music effect actually took a mixer channel, since
     // the capture pipeline can't hear anything. Build with
@@ -282,10 +284,10 @@ static void draw_title(void)
 #endif
 }
 
-static void draw_help(void)
+static void draw_instructions(void)
 {
     render_plain(0);
-    render_text_centred(1, "HOW TO PLAY");
+    render_text_centred(1, "INSTRUCTIONS");
 
     // Every other row: the glyphs' drop shadow sits on the bottom pixel line
     // of the cell, so consecutive rows would butt right up against each other.
@@ -296,6 +298,22 @@ static void draw_help(void)
     render_text(3, 14, "LAND BOTH ON GOALS.");
 
     render_text_centred(17, "B - BACK");
+}
+
+// Straight from the iOS credits view.
+static void draw_credits(void)
+{
+    render_plain(0);
+    render_text_centred(1, "CREDITS");
+
+    render_text_centred(3,  "PROGRAMMING");
+    render_text_centred(5,  "GARY RICHES");
+    render_text_centred(8,  "DESIGN");
+    render_text_centred(10, "ERIC RECKLING");
+    render_text_centred(13, "MUSIC");
+    render_text_centred(15, "KEVIN MACLEOD");
+
+    render_text_centred(18, "B - BACK");
 }
 
 static void draw_select(void)
@@ -332,7 +350,8 @@ static void goto_state(AppState s)
     switch (s)
     {
     case APP_TITLE:  draw_title();  break;
-    case APP_HELP:   draw_help();   break;
+    case APP_INSTRUCTIONS:   draw_instructions();   break;
+    case APP_CREDITS: draw_credits(); break;
     case APP_SELECT: draw_select(); break;
     default: break;
     }
@@ -343,7 +362,7 @@ static void goto_state(AppState s)
 
 static void input_title(void)
 {
-    if (key_hit(KEY_START) || key_hit(KEY_A))
+    if (key_hit(KEY_A))
     {
         audio_play(SND_PAGE);
         g_menu_cursor = g_save.last_level;
@@ -352,9 +371,14 @@ static void input_title(void)
     else if (key_hit(KEY_B))
     {
         audio_play(SND_PAGE);
-        goto_state(APP_HELP);
+        goto_state(APP_INSTRUCTIONS);
     }
     else if (key_hit(KEY_SELECT))
+    {
+        audio_play(SND_PAGE);
+        goto_state(APP_CREDITS);
+    }
+    else if (key_hit(KEY_START))
     {
         audio_play(SND_UI);
         g_save.music_on = !g_save.music_on;
@@ -364,9 +388,11 @@ static void input_title(void)
     }
 }
 
-static void input_help(void)
+// The instructions and credits screens are both read-and-return.
+static void input_page(void)
 {
-    if (key_hit(KEY_B) || key_hit(KEY_START) || key_hit(KEY_A))
+    if (key_hit(KEY_B) || key_hit(KEY_A) || key_hit(KEY_START) ||
+        key_hit(KEY_SELECT))
     {
         audio_play(SND_PAGE);
         goto_state(APP_TITLE);
@@ -501,7 +527,11 @@ int main(void)
     memcpy16(pal_obj_mem, ballPal, 16);
     oam_init(g_obj_buffer, 128);
 
-#ifdef BOOT_LEVEL
+#if defined(BOOT_SCREEN)
+    // Debug: boot straight to a menu screen, since the capture pipeline has
+    // no way to press buttons. e.g. make DEFINES=-DBOOT_SCREEN=APP_CREDITS
+    goto_state(BOOT_SCREEN);
+#elif defined(BOOT_LEVEL)
     // Debug shortcut for tools/grab_screen.py: build with
     //   make DEFINES=-DBOOT_LEVEL=0
     // to skip the menus and drop straight into a level. Adding -DBOOT_DEATH
@@ -527,8 +557,9 @@ int main(void)
 
         switch (g_state)
         {
-        case APP_TITLE:  input_title();  break;
-        case APP_HELP:   input_help();   break;
+        case APP_TITLE:   input_title(); break;
+        case APP_INSTRUCTIONS:    input_page();  break;
+        case APP_CREDITS: input_page();  break;
         case APP_SELECT: input_select(); break;
 
         case APP_PLAY:

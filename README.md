@@ -11,7 +11,9 @@ tiles at the same time and you advance.
 
 ## Controls
 
-**Title:** START or A to play, B for how-to-play, SELECT toggles music.
+**Title:** A to play, B for instructions, SELECT for credits, START toggles
+music.
+**Instructions / credits:** any button returns to the title.
 **Level select:** D-pad to move, A to play, B to go back.
 
 **In game:**
