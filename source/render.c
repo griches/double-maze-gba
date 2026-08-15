@@ -15,13 +15,14 @@
 #define SBB_TEXT 29   // BG1: text overlay, transparent everywhere else
 
 #define MAP_PITCH  32                          // a 32x32 screenblock's row stride
-#define SKIN_TILES (MT_COUNT * MT_TILES)       // 112 hardware tiles per skin
+#define SKIN_TILES (MT_COUNT * MT_TILES)       // 108 hardware tiles per skin
 
-// A screen entry's tile field is 10 bits, so a background can reach 1024 tiles
-// from its charblock base -- two charblocks' worth. Three skins plus the font
-// and title art come to 518, which overruns charblock 0 but stays well clear
-// of the screenblocks at 29/30 and of OBJ VRAM. Index it linearly rather than
-// through tile_mem[], whose CHARBLOCK type stops at 512.
+// A screen entry's tile field is 10 bits, so a background reaches 1024 tiles
+// from its charblock base -- two charblocks' worth, and well clear of the
+// screenblocks at 29/30 and of OBJ VRAM. Three skins plus the font and title
+// art currently come to 506. Index linearly rather than through tile_mem[],
+// whose CHARBLOCK type stops at 512, so adding metatiles can't quietly run
+// off the end of it.
 #define BG_TILE(n) (((TILE *)MEM_VRAM) + (n))
 
 // Charblock 0 layout.
@@ -113,13 +114,12 @@ void render_cell(const LevelData *lv, int skin, int cx, int cy, bool lit)
     if (lit)
         mt = mt_lit[mt];
 
-    // iOS draws floor tiles 20% taller than the row step, so each one's bottom
-    // lip is hidden by the tile below and only the last in a run shows it.
-    // A tilemap can't overlap, so the lip is a separate variant chosen here.
-    bool covered = (cy + 1 < GRID_H) &&
-                   (lv->tiles[(cy + 1) * GRID_W + cx] <= FLOOR_ID_MAX);
-    if (!covered)
-        mt = mt_lip[mt];
+    // iOS draws floor and target images 20% taller than the row step, so each
+    // overhangs the cell below. A tilemap can't overlap, so that overhang is
+    // baked into variants of the cells that would receive it -- and only the
+    // ones painting nothing of their own, since anything else covers it.
+    if (cy > 0 && tile_draws_image[lv->tiles[(cy - 1) * GRID_W + cx]])
+        mt = mt_toplip[mt];
 
     // Each metatile is 4 consecutive hardware tiles: TL, TR, BL, BR.
     u16 base = SKIN_BASE + skin * SKIN_TILES + mt * MT_TILES;
