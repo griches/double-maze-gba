@@ -27,6 +27,17 @@ DEFAULT_IOS = "/Users/garyriches/Documents/Source/DoubleMaze/DoubleMaze"
 CELL = 16                 # GBA cell size in pixels (2x2 hardware tiles)
 SCREEN_W, SCREEN_H = 240, 160
 
+# iOS draws each floor tile at 1.2x the cell height but steps down a row by
+# exactly one cell, so the bottom 20% of every tile is covered by the tile
+# below it. Only the last tile in a run shows that lip, which is what gives
+# the board its sense of depth. Squashing the art to a square cell bakes the
+# lip into every tile and draws a dark line under every row instead.
+#
+# So each floor tile gets two variants: the plain face, and a face with the
+# lip appended. render_cell picks between them by looking at the cell below.
+TILE_TALL = int(round(CELL * 1.2))       # 19
+LIP_PX = TILE_TALL - CELL                # 3
+
 # The iOS renderer draws the whole 44x44 wall image at 1.375x the cell, centred,
 # so the bar inside it straddles the boundary and overhangs both neighbours.
 # A tilemap can't overhang. Scaling the image down to the cell instead loses
@@ -39,7 +50,7 @@ SCREEN_W, SCREEN_H = 240, 160
 # just wholly inside the cell instead of straddling it.
 WALL_SCALE = 1.375
 WALL_SRC_FRAME = 44
-MT_COUNT = 21             # 16 tile ids + 5 lit-goal variants
+MT_COUNT = 28             # 16 ids + 5 lit goals + 6 lipped + 1 lit lipped
 
 # skin name -> (tile art prefix, background image)
 SKINS = [
@@ -67,6 +78,7 @@ WALL_EDGES_FOR_ID = {
 }
 FLOOR_IDS = set(range(0, 6))            # 0-5 get a floor tile
 GOAL_IDS = [5, 11, 12, 13, 14]          # these get the target overlay
+LIP_IDS = list(range(0, 6))             # only floor-bearing tiles have a lip
 
 
 def load(ios, name):
@@ -78,6 +90,25 @@ def load(ios, name):
 
 def fit(img, size):
     return img.resize((size, size), Image.LANCZOS)
+
+
+def tile_faces(img):
+    """A 32x36 tile image -> (face, face_with_lip), both CELL x CELL.
+
+    The face is the top of the tile drawn at iOS proportions, with the lip
+    cropped off. The lip variant drops an equivalent slice out of the middle
+    of the face -- a flat region -- so the top bevel and the lip both survive
+    at their original scale rather than being squashed together.
+    """
+    tall = img.resize((CELL, TILE_TALL), Image.LANCZOS)
+
+    face = tall.crop((0, 0, CELL, CELL))
+
+    with_lip = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    with_lip.alpha_composite(tall.crop((0, 0, CELL, CELL - LIP_PX)), (0, 0))
+    with_lip.alpha_composite(tall.crop((0, CELL, CELL, TILE_TALL)),
+                             (0, CELL - LIP_PX))
+    return face, with_lip
 
 
 def make_bars(ios):
@@ -147,27 +178,28 @@ def quantise(strip, alpha_cutoff=128):
 
 
 def build_skin(ios, skin, prefix, out_name):
-    floor = fit(load(ios, prefix + ".png"), CELL)
-    goal_off = fit(load(ios, prefix + "_target_off.png"), CELL)
-    goal_on = fit(load(ios, prefix + "_target_on.png"), CELL)
+    floor, floor_lip = tile_faces(load(ios, prefix + ".png"))
+    goal_off, goal_off_lip = tile_faces(load(ios, prefix + "_target_off.png"))
+    goal_on, goal_on_lip = tile_faces(load(ios, prefix + "_target_on.png"))
     bars = make_bars(ios)
 
-    cells = []
-    for tid in range(16):
-        cells.append(compose_cell(
-            floor if tid in FLOOR_IDS else None,
-            goal_off if tid in GOAL_IDS else None,
+    def cell(tid, goal_art, floor_art):
+        return compose_cell(
+            floor_art if tid in FLOOR_IDS else None,
+            goal_art if tid in GOAL_IDS else None,
             WALL_EDGES_FOR_ID.get(tid, ()), bars,
-        ))
-    # Lit-goal variants, in the order listed by GOAL_IDS.
-    for tid in GOAL_IDS:
-        cells.append(compose_cell(
-            floor if tid in FLOOR_IDS else None,
-            goal_on,
-            WALL_EDGES_FOR_ID.get(tid, ()), bars,
-        ))
+        )
 
-    assert len(cells) == MT_COUNT
+    cells = []
+    for tid in range(16):                       # 0-15  plain
+        cells.append(cell(tid, goal_off, floor))
+    for tid in GOAL_IDS:                        # 16-20 lit goals
+        cells.append(cell(tid, goal_on, floor))
+    for tid in LIP_IDS:                         # 21-26 with the depth lip
+        cells.append(cell(tid, goal_off_lip, floor_lip))
+    cells.append(cell(5, goal_on_lip, floor_lip))   # 27 lit goal with lip
+
+    assert len(cells) == MT_COUNT, "%d cells, expected %d" % (len(cells), MT_COUNT)
     strip = Image.new("RGBA", (CELL * MT_COUNT, CELL), (0, 0, 0, 0))
     for i, c in enumerate(cells):
         strip.alpha_composite(c, (i * CELL, 0))
@@ -383,8 +415,8 @@ def write_skins_header(ios):
         "",
         "#define CELL_PX      %d" % CELL,
         "#define SKIN_COUNT   %d" % len(SKINS),
-        "#define MT_COUNT     %d   // 16 tile ids + %d lit-goal variants"
-        % (MT_COUNT, len(GOAL_IDS)),
+        "#define MT_COUNT     %d   // %d ids + %d lit goals + %d lipped + 1 lit lipped"
+        % (MT_COUNT, 16, len(GOAL_IDS), len(LIP_IDS)),
         "#define MT_TILES     4    // hardware tiles per 16x16 metatile",
         "",
         "// Sprite strip: metatile 0 is the ball, then the death sequence.",
@@ -403,6 +435,18 @@ def write_skins_header(ios):
             str(16 + GOAL_IDS.index(t)) if t in GOAL_IDS else str(t)
             for t in range(16)),
         "};",
+        "",
+        "// Depth-lip variant for each metatile, or itself if it has no floor.",
+        "// Indexed by metatile, so it composes after mt_lit.",
+        "static const u8 mt_lip[MT_COUNT] = {",
+        "    " + ", ".join(
+            str(21 + LIP_IDS.index(m)) if m in LIP_IDS
+            else ("27" if m == 16 else str(m))
+            for m in range(MT_COUNT)),
+        "};",
+        "",
+        "// Tile ids 0-5 draw a floor; everything above is void.",
+        "#define FLOOR_ID_MAX 5",
         "",
         "#endif // DOUBLE_MAZE_SKINS_H",
         "",

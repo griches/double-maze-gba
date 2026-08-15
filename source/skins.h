@@ -7,7 +7,7 @@
 
 #define CELL_PX      16
 #define SKIN_COUNT   3
-#define MT_COUNT     21   // 16 tile ids + 5 lit-goal variants
+#define MT_COUNT     28   // 16 ids + 5 lit goals + 6 lipped + 1 lit lipped
 #define MT_TILES     4    // hardware tiles per 16x16 metatile
 
 // Sprite strip: metatile 0 is the ball, then the death sequence.
@@ -23,5 +23,14 @@ static const COLOR skin_backdrop[SKIN_COUNT] = { 0x1084, 0x2ADE, 0x16B1 };
 static const u8 mt_lit[16] = {
     0, 1, 2, 3, 4, 16, 6, 7, 8, 9, 10, 17, 18, 19, 20, 15
 };
+
+// Depth-lip variant for each metatile, or itself if it has no floor.
+// Indexed by metatile, so it composes after mt_lit.
+static const u8 mt_lip[MT_COUNT] = {
+    21, 22, 23, 24, 25, 26, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 27, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27
+};
+
+// Tile ids 0-5 draw a floor; everything above is void.
+#define FLOOR_ID_MAX 5
 
 #endif // DOUBLE_MAZE_SKINS_H
