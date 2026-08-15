@@ -1,4 +1,4 @@
-# double_maze
+# Double Maze
 
 Game Boy Advance port of the iOS game. Two balls share one 15x8 grid — the left
 plays columns 1-6, the right columns 8-13. Every D-pad press moves **both**
