@@ -1,0 +1,11 @@
+build/
+*.gba
+*.elf
+*.map
+*.sav
+*.ss[0-9]
+.DS_Store
+
+# Python tooling
+__pycache__/
+*.pyc

@@ -1,0 +1,7 @@
+# HUD font, 8x8 glyphs
+# The Makefile appends -fts, so no output format here.
+
+-gt
+-gB4
+-p
+-pn16

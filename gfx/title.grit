@@ -1,0 +1,9 @@
+# Title screen: 30x20 tiles plus its map.
+# The Makefile appends -fts, so no output format here.
+
+-gt
+-gB4
+-mRtf       # reduce duplicate and flipped tiles
+-mLs        # regular screenblock map layout
+-p
+-pn16
