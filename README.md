@@ -284,13 +284,3 @@ GBA's mixer. His work is normally released under Creative Commons Attribution
 — credit is given here, on the in-game credits screen, and in the ROM. The
 sound effects come from a stock library used in the 2009 release; if you fork
 this, check that library's terms before redistributing `audio/`.
-
-## Not done yet
-
-- **Ball rolling animation.** Movement is animated in code — the ball slides
-  between cells over 12 frames — but there's no sprite-frame roll. The
-  original's `move0001-0022` set turns out to be a flipping ring rather than a
-  rolling ball, which is probably why it was never wired up.
-- **Win feedback.** Death plays the real shrink-and-fade frames; the win is
-  still just a chime and a pause.
-- **Custom levels and the level editor.** Dropped, by decision.
