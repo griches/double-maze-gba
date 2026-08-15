@@ -17,6 +17,17 @@ include $(DEVKITARM)/gba_rules
 # MUSIC    is a directory of audio files built into a maxmod soundbank
 #---------------------------------------------------------------------------------
 TARGET   := double_maze
+
+# The shipped ROM carries the game's real name. The build target itself stays
+# space-free: make splits target and prerequisite names on whitespace, and
+# escaping that through the recursive make, VPATH and the link line is more
+# trouble than a copy at the end.
+DIST     := Double Maze.gba
+
+# Stamped into the cartridge header at 0xA0, which is what emulators and
+# flashcarts display. Max 12 characters. Quoted so the space survives the
+# shell -- gba_rules passes it through unquoted as -t$(GAME_TITLE).
+export GAME_TITLE := "DOUBLE MAZE"
 BUILD    := build
 SOURCES  := source
 DATA     :=
@@ -120,6 +131,8 @@ MGBA := /Applications/mGBA.app/Contents/MacOS/mGBA
 
 #---------------------------------------------------------------------------------
 all: $(BUILD)
+	@mv $(TARGET).gba "$(DIST)"
+	@echo "ready ... $(DIST)"
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
@@ -128,7 +141,7 @@ $(BUILD):
 #---------------------------------------------------------------------------------
 clean:
 	@echo clean ...
-	@rm -fr $(BUILD) $(TARGET).elf $(TARGET).gba $(TARGET).map
+	@rm -fr $(BUILD) $(TARGET).elf $(TARGET).gba $(TARGET).map "$(DIST)"
 
 #---------------------------------------------------------------------------------
 # Regenerate the tilesets from the original iOS artwork.
@@ -149,14 +162,14 @@ audio:
 # Screenshot the running ROM through mGBA's GDB stub. Override SHOT to name the
 # output: make shot SHOT=title.png
 SHOT ?= shot.png
-shot: $(BUILD)
-	@python3 tools/grab_screen.py $(SHOT) --rom $(CURDIR)/$(TARGET).gba --delay 3.0
+shot: all
+	@python3 tools/grab_screen.py $(SHOT) --rom "$(CURDIR)/$(DIST)" --delay 3.0
 
 #---------------------------------------------------------------------------------
 # Build, then boot the ROM in mGBA.
-run: $(BUILD)
-	@echo running $(TARGET).gba ...
-	@$(MGBA) $(CURDIR)/$(TARGET).gba
+run: all
+	@echo running $(DIST) ...
+	@$(MGBA) "$(CURDIR)/$(DIST)"
 
 #---------------------------------------------------------------------------------
 else

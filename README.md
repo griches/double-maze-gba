@@ -29,7 +29,7 @@ music.
 ## Building
 
 ```sh
-make          # build double_maze.gba
+make          # build "Double Maze.gba"
 make run      # build, then boot it in mGBA
 make clean    # remove build output
 make assets   # rebuild tilesets, sprites, title art and font
@@ -170,7 +170,11 @@ arm-none-eabi-gdb double_maze.elf
 ```
 
 `double_maze.elf` keeps full debug info; the `.gba` is the stripped binary
-image with a cartridge header.
+image with a cartridge header. The build works under the space-free name and
+renames the ROM at the end -- make splits target names on whitespace, so a
+space in `TARGET` would break the recursive make, VPATH and the link line.
+The cartridge header title (offset 0xA0) is set to `DOUBLE MAZE`, which is
+what emulators and flashcarts display.
 
 ### Screenshots
 
@@ -229,7 +233,7 @@ detect the backup hardware. Getting it to survive is fiddlier than it looks:
 `gba.specs` links with `--gc-sections`, which drops the section even with
 `__attribute__((used))`, and this binutils ignores `retain`. `save.c` forces a
 real reference from live code instead. If saving ever silently stops working,
-check `strings double_maze.gba | grep SRAM_V113` first.
+check `strings "Double Maze.gba" | grep SRAM_V113` first.
 
 ## Level 35
 
