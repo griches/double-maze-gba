@@ -28,7 +28,7 @@
 // is a one-line change.
 #define FX_FADE   0
 #define FX_MOSAIC 1
-#define TRANSITION_FX FX_MOSAIC
+#define TRANSITION_FX FX_FADE
 
 // Menu moves are frequent, so they run quickly; finishing a level gets a
 // longer one because it's punctuation rather than navigation.
