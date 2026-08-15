@@ -53,6 +53,7 @@ static Ball      g_ball[2];
 static AppState  g_state;
 static int       g_timer;
 static int       g_menu_cursor;
+static bool      g_was_on_goal[2];   // goal state before the current step
 static OBJ_ATTR  g_obj_buffer[128];
 
 //---------------------------------------------------------------------------
@@ -232,6 +233,9 @@ static void load_level(int index)
         g_ball[i].slide = 0;
         g_ball[i].alive = true;
     }
+
+    for (int i = 0; i < 2; i++)
+        g_was_on_goal[i] = ball_on_goal(&g_ball[i]);
 
     g_state = APP_PLAY;
     g_timer = 0;
@@ -434,6 +438,12 @@ static void input_play(void)
     if (dx == 0 && dy == 0)
         return;
 
+    // The goal chime marks arriving on a goal, so remember where each ball
+    // stood before the step -- otherwise a ball already sitting on one
+    // re-triggers it every time the other ball moves.
+    for (int i = 0; i < 2; i++)
+        g_was_on_goal[i] = ball_on_goal(&g_ball[i]);
+
     // One press, both balls, same direction. Each is blocked on its own.
     bool moved = step_ball(&g_ball[0], dx, dy);
     moved |= step_ball(&g_ball[1], dx, dy);
@@ -466,10 +476,11 @@ static void settle_step(void)
         complete_level();
         audio_play(SND_COMPLETE);
     }
-    else if (left_home || right_home)
+    else if ((left_home && !g_was_on_goal[0]) ||
+             (right_home && !g_was_on_goal[1]))
     {
-        // The original chimes when one ball is home and the other isn't --
-        // the only nudge that half the puzzle is solved.
+        // Chime only on arrival. A ball that was already home and stayed put
+        // isn't news, and re-announcing it every move gets grating.
         audio_play(SND_GOAL);
     }
 }
