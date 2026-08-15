@@ -114,8 +114,9 @@ Like the original, the skin advances every two levels: `floor(index / 2) % 3`.
 
 Every screen change runs a transition -- menus, entering a level, skipping,
 restarting, finishing, and dying. Menu moves are short; finishing a level gets
-a longer one, since it's punctuation rather than navigation. Completing a level
-also swaps the HUD line for a "LEVEL COMPLETE" banner during the pause.
+a longer one, since it's punctuation rather than navigation. The HUD line doubles as a banner: it reads "LEVEL COMPLETE" during the
+finishing pause and "YOU DIED!" while the death animation plays, then goes back
+to the level number on reload.
 
 Two effects are implemented, both driven from the same 0-16 ramp, so swapping
 between them is one line in main.c:
@@ -146,7 +147,8 @@ but it still has to call `audio_frame` every frame or the mixer starves.
 transition has got. `tools/grab_screen.py --fade N` / `--mosaic N` apply a level
 manually, and it prints `BLDCNT` and `BG0CNT` so the blend flags and the mosaic
 enable bit can be checked. `make DEFINES="-DBOOT_LEVEL=0 -DBOOT_FX=8"` parks the
-screen mid-transition, whichever effect is selected.
+screen mid-transition, whichever effect is selected. `-DDEATH_FRAMES=600` holds
+the death state long enough to capture it.
 
 The mosaic preview is an approximation: hardware mosaics each layer before
 compositing, so sprites and text block up independently of the board, whereas

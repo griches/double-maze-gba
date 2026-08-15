@@ -19,7 +19,9 @@
 // The original slides the ball over 0.4s. That's sluggish with a D-pad, where
 // there's no swipe gesture to perform first, so this is a little quicker.
 #define MOVE_FRAMES  12
+#ifndef DEATH_FRAMES
 #define DEATH_FRAMES 76   // exactly the death animation; the fade follows it
+#endif
 #define WIN_FRAMES   45   // ...and 1.0s before advancing; the fade adds the rest
 
 #define DEATH_ANIM_HOLD 4 // frames per death-animation frame
@@ -418,6 +420,16 @@ static void fx_to_state(AppState s, int frames)
     fx_in(frames);
 }
 
+// Both the real death and the BOOT_DEATH debug path come through here, so the
+// banner can't go missing from one of them.
+static void enter_death(void)
+{
+    g_state = APP_DEATH;
+    g_timer = DEATH_FRAMES;
+    audio_play(SND_FALL);
+    render_banner("YOU DIED!");
+}
+
 static int next_level_index(void)
 {
     return (g_level_index + 1) % LEVEL_COUNT;
@@ -552,9 +564,7 @@ static void settle_step(void)
 
     if (!g_ball[0].alive || !g_ball[1].alive)
     {
-        g_state = APP_DEATH;
-        g_timer = DEATH_FRAMES;
-        audio_play(SND_FALL);
+        enter_death();
         return;
     }
 
@@ -613,8 +623,7 @@ int main(void)
     // Debug: kill a ball at boot so the death sequence, its fade and the
     // reload all run for real without needing a button press.
     g_ball[0].alive = false;
-    g_state = APP_DEATH;
-    g_timer = DEATH_FRAMES;
+    enter_death();
 #endif
 #else
     goto_state(APP_TITLE);
