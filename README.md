@@ -23,7 +23,7 @@ music.
 |---|---|
 | D-pad | Step both balls |
 | START | Skip to the next level |
-| SELECT | Restart the current level |
+| SELECT | Back to the title screen |
 | B | Back to level select |
 
 ## Building
