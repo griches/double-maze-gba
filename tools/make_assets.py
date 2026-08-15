@@ -119,7 +119,25 @@ def make_bars(ios):
         bar = img.crop(box)
         w = min(CELL, max(1, int(round(bar.width * scale))))
         h = min(CELL, max(1, int(round(bar.height * scale))))
-        bars[edge] = bar.resize((w, h), Image.LANCZOS)
+
+        # Span the full edge. The maths gives the horizontal bars 15 of the 16
+        # pixels, which leaves a notch where two walls meet at a corner; iOS
+        # doesn't show one because its bar straddles the cell and covers the
+        # whole width once rasterised.
+        if edge in ("top", "bottom"):
+            w = CELL
+        else:
+            h = CELL
+
+        bar = bar.resize((w, h), Image.LANCZOS)
+
+        # Scaling a 9px bar down to 4px leaves its outer columns partly
+        # transparent, and quantise() then drops anything under half alpha --
+        # which silently shaved a column off one side of the vertical bars and
+        # two rows off their ends. Harden the edges so the bar keeps its full
+        # size no matter how the source was anti-aliased.
+        bar.putalpha(bar.getchannel("A").point(lambda a: 255 if a > 60 else 0))
+        bars[edge] = bar
     return bars
 
 
