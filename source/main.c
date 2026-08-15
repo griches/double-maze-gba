@@ -446,8 +446,7 @@ static void input_play(void)
     }
     if (key_hit(KEY_SELECT))
     {
-        audio_play(SND_PAGE);
-        goto_state(APP_TITLE);
+        load_level(g_level_index);  // restart
         return;
     }
 
