@@ -95,12 +95,14 @@ void render_init(void)
     // drawing glyphs into the art layer would punch them through it -- and
     // their transparent pixels fall to the backdrop colour, which is what put
     // black boxes behind every word. On BG1 the gaps show BG0 instead.
+    // BG_MOSAIC only opts each layer in; REG_MOSAIC stays 0 until a
+    // transition wants it, so this is inert the rest of the time.
     REG_BG0CNT = BG_CBB(CBB_BG) | BG_SBB(SBB_ART) | BG_4BPP | BG_REG_32x32
-               | BG_PRIO(3);
+               | BG_MOSAIC | BG_PRIO(3);
     REG_BG1CNT = BG_CBB(CBB_BG) | BG_SBB(SBB_TEXT) | BG_4BPP | BG_REG_32x32
-               | BG_PRIO(1);
+               | BG_MOSAIC | BG_PRIO(1);
     REG_BG2CNT = BG_CBB(CBB_BG) | BG_SBB(SBB_WALLS) | BG_4BPP | BG_REG_32x32
-               | BG_PRIO(2);
+               | BG_MOSAIC | BG_PRIO(2);
 
     // Nothing here scrolls, but the scroll registers are write-only and their
     // power-on contents aren't guaranteed on real hardware -- so pin them.
@@ -113,6 +115,7 @@ void render_init(void)
 
     render_text_clear();
     render_walls_clear();
+    render_mosaic(0);
 
     REG_DISPCNT = DCNT_MODE0 | DCNT_BG0 | DCNT_BG1 | DCNT_BG2
                 | DCNT_OBJ | DCNT_OBJ_1D;
@@ -286,6 +289,21 @@ void render_fade(int level)
 
     REG_BLDCNT = BLD_ALL | BLD_BACKDROP | BLD_BLACK;
     REG_BLDY = (level > 16) ? 16 : level;
+}
+
+// Mosaic over the backgrounds and sprites. 0 is the normal picture, 16 the
+// coarsest the hardware offers (16x16 blocks). Only layers with BG_MOSAIC set
+// are affected, which render_init does once -- REG_MOSAIC is 0 until a
+// transition asks for something, so it costs nothing the rest of the time.
+void render_mosaic(int level)
+{
+    int n = level * 15 / 16;
+    if (n < 0)
+        n = 0;
+    if (n > 15)
+        n = 15;
+
+    REG_MOSAIC = MOS_BUILD(n, n, n, n);
 }
 
 void render_text_clear(void)

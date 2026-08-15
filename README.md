@@ -112,13 +112,27 @@ Like the original, the skin advances every two levels: `floor(index / 2) % 3`.
 
 ## Screen transitions
 
-Every screen change fades through black -- menus, entering a level, skipping,
-restarting, finishing, and dying -- using the GBA's brightness blend
-(`BLDCNT` / `BLDY`) rather than anything drawn by hand -- it costs no CPU and
-covers all four backgrounds, the sprites and the backdrop in one go. Menu
-moves use a short fade; finishing a level gets a longer one, since it's
-punctuation rather than navigation. Completing a level also swaps the HUD line
-for a "LEVEL COMPLETE" banner during the pause.
+Every screen change runs a transition -- menus, entering a level, skipping,
+restarting, finishing, and dying. Menu moves are short; finishing a level gets
+a longer one, since it's punctuation rather than navigation. Completing a level
+also swaps the HUD line for a "LEVEL COMPLETE" banner during the pause.
+
+Two effects are implemented, both driven from the same 0-16 ramp, so swapping
+between them is one line in main.c:
+
+```c
+#define TRANSITION_FX FX_MOSAIC     // or FX_FADE
+```
+
+- **`FX_FADE`** uses the brightness blend (`BLDCNT` / `BLDY`) over all four
+  backgrounds, the sprites and the backdrop. Goes fully black, so it hides the
+  level swap completely.
+- **`FX_MOSAIC`** uses `MOSAIC`, with the mosaic bit set on each background in
+  `render_init` and `ATTR0_MOSAIC` on the sprites. Ramps to 16x16 blocks. It
+  never goes opaque, so the swap happens behind a heavily pixelated picture
+  rather than a hidden one.
+
+Neither costs CPU; both are hardware doing the work.
 
 Transitions push OAM themselves, via `commit_sprites`. The main loop only
 writes it at the end of a frame, which is too late: the fade would come back
@@ -128,13 +142,17 @@ up on the previous level's ball positions and they would jump a frame later.
 transition, and threading it through the state machine would buy nothing --
 but it still has to call `audio_frame` every frame or the mixer starves.
 
-`BLDY` is write-only, so a capture can't read back how far a fade has got.
-`tools/grab_screen.py --fade N` applies a level manually, and prints `BLDCNT`
-so the blend flags themselves can be checked. `make DEFINES="-DBOOT_LEVEL=0
--DBOOT_FADE=8"` parks the screen mid-fade.
+`BLDY` and `MOSAIC` are both write-only, so a capture can't read back how far a
+transition has got. `tools/grab_screen.py --fade N` / `--mosaic N` apply a level
+manually, and it prints `BLDCNT` and `BG0CNT` so the blend flags and the mosaic
+enable bit can be checked. `make DEFINES="-DBOOT_LEVEL=0 -DBOOT_FX=8"` parks the
+screen mid-transition, whichever effect is selected.
 
-Other options the hardware offers, if the fade ever gets boring: mosaic
-(`MOSAIC`) to pixelate in and out, a window wipe (`WIN0`) to iris or wipe the
+The mosaic preview is an approximation: hardware mosaics each layer before
+compositing, so sprites and text block up independently of the board, whereas
+the tool applies it to the finished image.
+
+Other options the hardware offers: a window wipe (`WIN0`) to iris or wipe the
 picture away, or a scroll between two boards held side by side in a 64x32 map.
 A per-scanline `BG0HOFS` change under an HBlank interrupt is what it would take
 to approximate the page curl the iOS version uses.

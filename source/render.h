@@ -40,8 +40,9 @@ void render_plain(int skin);
 
 void render_title_art(void);
 
-// Brightness fade across the whole screen: 0 normal, 16 fully black.
-void render_fade(int level);
+// Transition effects. 0 is the normal picture, 16 the full effect.
+void render_fade(int level);      // brightness fade to black
+void render_mosaic(int level);    // pixelate backgrounds and sprites
 
 // Wipes the whole text layer back to transparent.
 void render_text_clear(void);

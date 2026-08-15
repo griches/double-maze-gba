@@ -24,10 +24,16 @@
 
 #define DEATH_ANIM_HOLD 4 // frames per death-animation frame
 
-// Menu moves are frequent, so they fade quickly; finishing a level gets a
+// Which effect the screen transitions use. Both take 0-16, so swapping them
+// is a one-line change.
+#define FX_FADE   0
+#define FX_MOSAIC 1
+#define TRANSITION_FX FX_MOSAIC
+
+// Menu moves are frequent, so they run quickly; finishing a level gets a
 // longer one because it's punctuation rather than navigation.
-#define FADE_MENU   8
-#define FADE_LEVEL 14
+#define FX_MENU   8
+#define FX_LEVEL 14
 
 #define SELECT_COLS 7   // 7 cells of 4 columns, plus room for the cursor
 #define SELECT_ROWS ((LEVEL_COUNT + SELECT_COLS - 1) / SELECT_COLS)
@@ -187,7 +193,7 @@ static void update_sprites(void)
 
         obj_unhide(obj, 0);
         obj_set_attr(obj,
-                     ATTR0_SQUARE | ATTR0_4BPP,
+                     ATTR0_SQUARE | ATTR0_4BPP | ATTR0_MOSAIC,
                      ATTR1_SIZE_16,
                      ATTR2_PALBANK(0) | (metatile * MT_TILES));
         obj_set_pos(obj, b->px, b->py);
@@ -264,18 +270,27 @@ static void complete_level(void)
 // Blocking on purpose: nothing else needs to happen while the screen is
 // fading, and threading it through the state machine would buy nothing. The
 // audio mixer still has to be serviced every frame, hence audio_frame here.
-static void fade_run(int from, int to, int frames)
+static void fx_apply(int step)
+{
+#if TRANSITION_FX == FX_MOSAIC
+    render_mosaic(step);
+#else
+    render_fade(step);
+#endif
+}
+
+static void fx_run(int from, int to, int frames)
 {
     for (int f = 1; f <= frames; f++)
     {
         VBlankIntrWait();
-        render_fade(from + (to - from) * f / frames);
+        fx_apply(from + (to - from) * f / frames);
         audio_frame();
     }
 }
 
-static void fade_out(int frames) { fade_run(0, 16, frames); }
-static void fade_in(int frames)  { fade_run(16, 0, frames); }
+static void fx_out(int frames) { fx_run(0, 16, frames); }
+static void fx_in(int frames)  { fx_run(16, 0, frames); }
 
 //---------------------------------------------------------------------------
 // menus
@@ -387,20 +402,20 @@ static void commit_sprites(void)
     oam_copy(oam_mem, g_obj_buffer, 2);
 }
 
-static void fade_to_level(int index, int frames)
+static void fx_to_level(int index, int frames)
 {
-    fade_out(frames);
+    fx_out(frames);
     load_level(index);
     commit_sprites();
-    fade_in(frames);
+    fx_in(frames);
 }
 
-static void fade_to_state(AppState s, int frames)
+static void fx_to_state(AppState s, int frames)
 {
-    fade_out(frames);
+    fx_out(frames);
     goto_state(s);
     commit_sprites();
-    fade_in(frames);
+    fx_in(frames);
 }
 
 static int next_level_index(void)
@@ -417,17 +432,17 @@ static void input_title(void)
     {
         audio_play(SND_PAGE);
         g_menu_cursor = g_save.last_level;
-        fade_to_state(APP_SELECT, FADE_MENU);
+        fx_to_state(APP_SELECT, FX_MENU);
     }
     else if (key_hit(KEY_B))
     {
         audio_play(SND_PAGE);
-        fade_to_state(APP_INSTRUCTIONS, FADE_MENU);
+        fx_to_state(APP_INSTRUCTIONS, FX_MENU);
     }
     else if (key_hit(KEY_SELECT))
     {
         audio_play(SND_PAGE);
-        fade_to_state(APP_CREDITS, FADE_MENU);
+        fx_to_state(APP_CREDITS, FX_MENU);
     }
     else if (key_hit(KEY_START))
     {
@@ -446,7 +461,7 @@ static void input_page(void)
         key_hit(KEY_SELECT))
     {
         audio_play(SND_PAGE);
-        fade_to_state(APP_TITLE, FADE_MENU);
+        fx_to_state(APP_TITLE, FX_MENU);
     }
 }
 
@@ -472,12 +487,12 @@ static void input_select(void)
     if (key_hit(KEY_A) || key_hit(KEY_START))
     {
         audio_play(SND_PAGE);
-        fade_to_level(g_menu_cursor, FADE_MENU);
+        fx_to_level(g_menu_cursor, FX_MENU);
     }
     else if (key_hit(KEY_B))
     {
         audio_play(SND_PAGE);
-        fade_to_state(APP_TITLE, FADE_MENU);
+        fx_to_state(APP_TITLE, FX_MENU);
     }
 }
 
@@ -487,17 +502,17 @@ static void input_play(void)
     {
         audio_play(SND_PAGE);
         g_menu_cursor = g_level_index;
-        fade_to_state(APP_SELECT, FADE_MENU);
+        fx_to_state(APP_SELECT, FX_MENU);
         return;
     }
     if (key_hit(KEY_START))
     {
-        fade_to_level(next_level_index(), FADE_MENU);   // the iOS "skip"
+        fx_to_level(next_level_index(), FX_MENU);   // the iOS "skip"
         return;
     }
     if (key_hit(KEY_SELECT))
     {
-        fade_to_level(g_level_index, FADE_MENU);        // restart
+        fx_to_level(g_level_index, FX_MENU);        // restart
         return;
     }
 
@@ -579,10 +594,10 @@ int main(void)
     memcpy16(pal_obj_mem, ballPal, 16);
     oam_init(g_obj_buffer, 128);
 
-#ifdef BOOT_FADE
-    // Debug: park the screen at a fixed fade level so the capture pipeline
-    // can see one. BLDY is write-only, so the level can't be read back.
-    render_fade(BOOT_FADE);
+#ifdef BOOT_FX
+    // Debug: park the screen at a fixed transition step so the capture
+    // pipeline can see one. Neither BLDY nor MOSAIC can be read back.
+    fx_apply(BOOT_FX);
 #endif
 #if defined(BOOT_SCREEN)
     // Debug: boot straight to a menu screen, since the capture pipeline has
@@ -630,13 +645,13 @@ int main(void)
 
         case APP_DEATH:
             if (--g_timer <= 0)
-                fade_to_level(g_level_index, FADE_LEVEL);
+                fx_to_level(g_level_index, FX_LEVEL);
             break;
 
         case APP_WIN:
             if (--g_timer <= 0)
             {
-                fade_to_level(next_level_index(), FADE_LEVEL);
+                fx_to_level(next_level_index(), FX_LEVEL);
             }
             break;
         }
