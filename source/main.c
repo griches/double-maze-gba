@@ -226,6 +226,8 @@ static void refresh_goal_lights(void)
 //---------------------------------------------------------------------------
 // level lifecycle
 
+static void enter_death(void);
+
 static void load_level(int index)
 {
     g_level_index = index;
@@ -257,6 +259,15 @@ static void load_level(int index)
     render_level(g_level, g_skin);
     render_hud(g_level->number);
     refresh_goal_lights();
+
+#ifdef BOOT_DEATH
+    // Debug: kill a ball on every load, so the death sequence, its fade and
+    // the reload run for real and on a loop. It has to loop -- mGBA runs
+    // unthrottled with the debugger attached, so a one-shot death is long
+    // gone by the time tools/grab_screen.py can ask for a frame.
+    g_ball[0].alive = false;
+    enter_death();
+#endif
 }
 
 static void complete_level(void)
@@ -300,11 +311,13 @@ static void fx_in(int frames)  { fx_run(16, 0, frames); }
 static void draw_title(void)
 {
     render_title_art();
-    render_text_centred(12, "A - PLAY");
-    render_text_centred(14, "B - INSTRUCTIONS");
-    render_text_centred(16, "SELECT - CREDITS");
-    render_text_centred(18, g_save.music_on ? "START - MUSIC ON"
+    render_text_centred(10, "A - PLAY");
+    render_text_centred(12, "B - INSTRUCTIONS");
+    render_text_centred(14, "SELECT - CREDITS");
+    render_text_centred(16, g_save.music_on ? "START - MUSIC ON"
                                             : "START - MUSIC OFF");
+    render_text_centred(18, g_save.high_contrast ? "L - CONTRAST HIGH"
+                                                 : "L - CONTRAST NORMAL");
 #ifdef AUDIO_DEBUG
     // Reports whether the music effect actually took a mixer channel, since
     // the capture pipeline can't hear anything. Build with
@@ -433,6 +446,21 @@ static void enter_death(void)
 static int next_level_index(void)
 {
     return (g_level_index + 1) % LEVEL_COUNT;
+}
+
+// L swaps the palette, from anywhere. The point of the high-contrast scheme is
+// that you reach for it when the screen you're on is unreadable, which is
+// rarely while you happen to be sitting on the title screen -- and it costs
+// nothing to make it global, since only palette RAM changes.
+static void toggle_contrast(void)
+{
+    g_save.high_contrast = !g_save.high_contrast;
+    render_set_contrast(g_save.high_contrast);
+    save_store();
+    audio_play(SND_UI);
+
+    if (g_state == APP_TITLE)
+        draw_title();   // the menu line reports which scheme is on
 }
 
 //---------------------------------------------------------------------------
@@ -596,12 +624,19 @@ int main(void)
 
     save_load();
 
+#ifdef BOOT_CONTRAST
+    // Debug: force a contrast scheme, since the capture pipeline can't press
+    // L. e.g. make DEFINES=-DBOOT_CONTRAST=1
+    g_save.high_contrast = BOOT_CONTRAST;
+#endif
+    // Before render_init, so the first frame is already in the right scheme.
+    render_set_contrast(g_save.high_contrast);
     render_init();
     audio_init();
     audio_music_set(g_save.music_on);
 
+    // render_init owns the palette; only the tiles are loaded here.
     memcpy32(tile_mem_obj[0], ballTiles, ballTilesLen / 4);
-    memcpy16(pal_obj_mem, ballPal, 16);
     oam_init(g_obj_buffer, 128);
 
 #ifdef BOOT_FX
@@ -619,12 +654,6 @@ int main(void)
     // to skip the menus and drop straight into a level. Adding -DBOOT_DEATH
     // also starts, and endlessly repeats, the death sequence.
     load_level(BOOT_LEVEL);
-#ifdef BOOT_DEATH
-    // Debug: kill a ball at boot so the death sequence, its fade and the
-    // reload all run for real without needing a button press.
-    g_ball[0].alive = false;
-    enter_death();
-#endif
 #else
     goto_state(APP_TITLE);
 #endif
@@ -637,6 +666,9 @@ int main(void)
         bool was_sliding = any_sliding();
         advance_slide(&g_ball[0]);
         advance_slide(&g_ball[1]);
+
+        if (key_hit(KEY_L))
+            toggle_contrast();
 
         switch (g_state)
         {

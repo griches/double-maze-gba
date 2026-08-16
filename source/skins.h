@@ -16,7 +16,7 @@
 #define SPR_DEATH_COUNT 19
 
 // Backdrop colour behind the void tiles, sampled from each skin's iOS
-// background image.
+// background image. palettes.h carries the high-contrast variant.
 static const COLOR skin_backdrop[SKIN_COUNT] = { 0x1084, 0x2ADE, 0x16B1 };
 
 // Lit variant for each tile id; a non-goal tile maps to itself.

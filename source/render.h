@@ -19,6 +19,11 @@
 // menus and the game run in one video mode with no VRAM reloads between them.
 void render_init(void);
 
+// The artwork's own colours, or the high-contrast regrade for playing on an
+// unlit screen. Only palette RAM changes, so this is safe from any screen at
+// any time; call it before render_init to pick the mode the game starts in.
+void render_set_contrast(bool high);
+
 //--- gameplay --------------------------------------------------------------
 
 // Applies a skin's backdrop colour and repaints the whole grid.

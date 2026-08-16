@@ -15,6 +15,7 @@ plus gfx/ball.png, gfx/font.png and source/skins.h.
     python3 tools/make_assets.py [path-to-ios-project]
 """
 
+import colorsys
 import os
 import sys
 from PIL import Image
@@ -55,6 +56,62 @@ LIP_PX = TILE_TALL - CELL                # 3
 WALL_SCALE = 1.375
 WALL_SRC_FRAME = 44
 MT_COUNT = 27             # 16 ids + 5 lit goals + 6 carrying a lip
+
+# The high-contrast palettes, for playing on hardware.
+#
+# The iOS art was drawn for a backlit sRGB phone. An unlit AGB or a frontlit
+# AGS-001 panel is reflective: it bottoms out at whatever light bounces off it
+# and tops out around paper white, so the whole picture lands inside a narrow
+# band of pale grey, and the weak colour filters desaturate it on the way
+# through. Taken straight, the original palette puts the backdrop, the floor
+# tiles and the wall bars within about forty luminance points of each other --
+# which survives that squeeze as one flat tone. tools/washout.py simulates it.
+#
+# Graded for that, the art looks dark and oversaturated on a monitor -- which
+# is the same trade in reverse, and why this is a second palette rather than a
+# replacement. Nothing below touches the tiles: the grade is applied to each
+# palette entry after quantising, so both modes share one tileset and the
+# toggle is sixteen colours per bank.
+#
+# Each layer is pushed onto its own tier, and everything gets a saturation
+# boost to make up for the filters:
+#
+#   backdrop   darkest     the empty space around the maze
+#   floor      middle      the playable cells
+#   walls      brightest   the bars, which matter most to read at a glance
+#
+# Ordering the three by brightness means they stay told apart by luminance
+# alone, so it survives the desaturation as well as the contrast squeeze.
+# sat scales HSV saturation; gain scales value; lift shifts it afterwards.
+#
+# The floor gain is per skin because the source art doesn't start out level:
+# the green tiles are drawn a good deal lighter than the purple ones. One
+# shared gain would leave green sitting up in the walls' tier, which is where
+# the bars stop reading. Landing all three on the same middle tier -- a mean
+# luminance around 85 -- is what keeps them equally legible.
+#
+# The tiles keep white_gain at 1, so the goal ring and the highlight along each
+# tile's top edge stay white while the coloured face drops away underneath
+# them. Those two are the only cues for "this is the square you're aiming at"
+# and "this is where one cell ends and the next begins", and both were being
+# lost.
+SKIN_GRADE = {
+    "purple": dict(sat=1.55, gain=0.95, lift=-0.06, white_gain=1.0),
+    "orange": dict(sat=1.55, gain=0.80, lift=-0.06, white_gain=1.0),
+    "green":  dict(sat=1.55, gain=0.64, lift=-0.06, white_gain=1.0),
+}
+WALL_GRADE = dict(sat=0.95, gain=0.55, lift=0.45)
+BACKDROP_GRADE = dict(sat=1.70, gain=0.26, lift=0.02)
+# The ball only needs its colour back -- it already sits above the floor tier
+# in brightness. Leaving the value alone keeps the death frames fading out
+# through pale RGB the way build_sprites relies on; they're near-neutral, so a
+# saturation boost barely touches them.
+BALL_GRADE = dict(sat=1.45, gain=1.0, lift=0.0)
+# The title screen is one flat field of green with white lettering over it, and
+# the menus print white text on top of it. Dropping the field well below the
+# text is the whole job here -- so the green takes the gain and the white
+# doesn't.
+TITLE_GRADE = dict(sat=1.45, gain=0.52, lift=0.0, white_gain=1.0)
 
 # skin name -> (tile art prefix, background image)
 SKINS = [
@@ -188,6 +245,45 @@ def compose_cell(floor, goal, edges, bars, top_lip=None):
         bar = bars[edge]
         paste_bar(cell, bar, *bar_position(edge, bar))
     return cell
+
+
+def grade_rgb(rgb, sat, gain, lift, white_gain=None):
+    """Push one colour onto its tier: saturate, then scale and shift value.
+
+    Near-neutral colours take white_gain instead of gain. That split matters
+    because a saturated colour and a white one can share an HSV value while
+    reading nothing like each other -- the title's green field sits at the same
+    value as the white it's lettered on, and the goal ring at the same value as
+    the tile it's drawn on. Scaling both equally just moves the pair down
+    together; scaling only the coloured one opens the gap. white_gain defaults
+    to gain, which grades everything uniformly.
+
+    WHITE_S is where "near-neutral" stops. It has to be low: the pale tile
+    faces still carry a good half of full saturation, and anything generous
+    enough to include them exempts the whole tileset from its own grade.
+    """
+    WHITE_S = 0.35
+
+    h, s, v = colorsys.rgb_to_hsv(*[c / 255.0 for c in rgb[:3]])
+    if white_gain is None:
+        white_gain = gain
+
+    whiteness = max(0.0, 1.0 - s / WHITE_S)
+    g = gain + (white_gain - gain) * whiteness
+    s = min(1.0, s * sat)
+    v = min(1.0, max(0.0, v * g + lift))
+    return tuple(int(round(c * 255)) for c in colorsys.hsv_to_rgb(h, s, v))
+
+
+def graded_palette(name, **kw):
+    """A generated PNG's 16 palette entries, graded, as BGR15.
+
+    Index 0 is the transparent slot and never reaches the screen -- except for
+    the backdrop, which is set separately -- so it passes through untouched.
+    """
+    pal = Image.open(os.path.join(GFX, name + ".png")).getpalette()[: 16 * 3]
+    entries = [tuple(pal[i * 3:i * 3 + 3]) for i in range(16)]
+    return [bgr15(entries[0])] + [bgr15(grade_rgb(c, **kw)) for c in entries[1:]]
 
 
 def quantise(strip, alpha_cutoff=128):
@@ -475,11 +571,79 @@ def bgr15(rgb):
     return (b << 10) | (g << 5) | r
 
 
-def write_skins_header(ios):
-    backdrops = []
-    for skin, _prefix, bg in SKINS:
+def backdrop_colours(ios):
+    """Each skin's backdrop, in both modes, sampled from its iOS background."""
+    normal, high = [], []
+    for _skin, _prefix, bg in SKINS:
         im = load(ios, bg)
-        backdrops.append((skin, bgr15(im.getpixel((im.width // 2, im.height // 2)))))
+        centre = im.getpixel((im.width // 2, im.height // 2))
+        normal.append(bgr15(centre))
+        high.append(bgr15(grade_rgb(centre, **BACKDROP_GRADE)))
+    return normal, high
+
+
+def c_palette(name, values):
+    lines = ["static const COLOR %s = {" % name]
+    for row in range(0, len(values), 8):
+        lines.append("    " + ", ".join("0x%04X" % v
+                                        for v in values[row:row + 8]) + ",")
+    return lines + ["};", ""]
+
+
+def write_palettes_header(ios):
+    """The high-contrast palettes, one bank per tileset.
+
+    Only colours -- both modes run off the same tiles and the same maps, so
+    switching is a handful of memcpy16s into palette RAM.
+    """
+    _normal, high = backdrop_colours(ios)
+
+    lines = [
+        "// Generated by tools/make_assets.py -- do not edit by hand.",
+        "",
+        "#ifndef DOUBLE_MAZE_PALETTES_H",
+        "#define DOUBLE_MAZE_PALETTES_H",
+        "",
+        "#include <tonc.h>",
+        "",
+        "#include \"skins.h\"",
+        "",
+        "// An unlit GBA screen bottoms out at reflected room light and tops",
+        "// out near paper white, so the art's own palette -- drawn for a phone",
+        "// -- collapses to one flat tone on hardware. These are the same",
+        "// colours regraded onto three separated brightness tiers: backdrop",
+        "// darkest, floor in the middle, wall bars brightest. See the grade",
+        "// constants in tools/make_assets.py for the reasoning.",
+        "",
+    ]
+
+    skin_rows = []
+    for skin, _prefix, _bg in SKINS:
+        pal = graded_palette("tiles_" + skin, **SKIN_GRADE[skin])
+        skin_rows.append("    { " + ", ".join("0x%04X" % v for v in pal)
+                         + " },   // " + skin)
+    lines += ["static const COLOR pal_hc_skin[SKIN_COUNT][16] = {"] \
+        + skin_rows + ["};", ""]
+
+    lines += c_palette("pal_hc_walls[16]",
+                       graded_palette("walls", **WALL_GRADE))
+    lines += c_palette("pal_hc_title[16]",
+                       graded_palette("title", **TITLE_GRADE))
+    lines += c_palette("pal_hc_ball[16]",
+                       graded_palette("ball", **BALL_GRADE))
+    lines += c_palette("skin_backdrop_hc[SKIN_COUNT]", high)
+
+    lines += ["#endif // DOUBLE_MAZE_PALETTES_H", ""]
+
+    path = os.path.join(SRC_OUT, "palettes.h")
+    with open(path, "w") as fh:
+        fh.write("\n".join(lines))
+    print("wrote", path)
+
+
+def write_skins_header(ios):
+    normal, _high = backdrop_colours(ios)
+    backdrops = list(zip([s[0] for s in SKINS], normal))
 
     lines = [
         "// Generated by tools/make_assets.py -- do not edit by hand.",
@@ -501,7 +665,7 @@ def write_skins_header(ios):
         "#define SPR_DEATH_COUNT %d" % len(DEATH_FRAMES),
         "",
         "// Backdrop colour behind the void tiles, sampled from each skin's iOS",
-        "// background image.",
+        "// background image. palettes.h carries the high-contrast variant.",
         "static const COLOR skin_backdrop[SKIN_COUNT] = { %s };"
         % ", ".join("0x%04X" % c for _n, c in backdrops),
         "",
@@ -571,6 +735,7 @@ def main():
     build_font()
     write_fontmap()
     write_skins_header(ios)
+    write_palettes_header(ios)
 
 
 if __name__ == "__main__":

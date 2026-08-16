@@ -62,34 +62,81 @@ def load_strip(name):
     return cells
 
 
+def skins_header():
+    return open(os.path.join(HERE, "source", "skins.h")).read()
+
+
+def table(name):
+    """Pull one flat u8 table out of the generated header."""
+    body = re.search(r"%s\[[^\]]*\] = \{(.*?)\};" % name, skins_header(),
+                     re.S).group(1)
+    return [int(v) for v in re.findall(r"\d+", body)]
+
+
 def backdrop_for(skin_index):
     """Read the BGR15 backdrops straight out of the generated header."""
-    text = open(os.path.join(HERE, "source", "skins.h")).read()
-    vals = re.search(r"skin_backdrop\[SKIN_COUNT\] = \{(.*?)\};", text).group(1)
+    vals = re.search(r"skin_backdrop\[SKIN_COUNT\] = \{(.*?)\};",
+                     skins_header()).group(1)
     raw = [int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]+)", vals)]
     c = raw[skin_index]
     r, g, b = (c & 31), ((c >> 5) & 31), ((c >> 10) & 31)
     return (r << 3, g << 3, b << 3, 255)
 
 
+EDGE_TOP, EDGE_RIGHT, EDGE_BOTTOM, EDGE_LEFT = 1, 2, 4, 8
+
+
+def wall_mask(tiles, edges, cx, cy):
+    """Mirror of wall_mask in render.c: own edges plus the neighbours' facing
+    ones, since a bar straddles the boundary and each side draws its half."""
+    at = lambda x, y: edges[tiles[y * GRID_W + x]]
+    mask = at(cx, cy)
+
+    if cy > 0 and (at(cx, cy - 1) & EDGE_BOTTOM):
+        mask |= EDGE_TOP
+    if cy < GRID_H - 1 and (at(cx, cy + 1) & EDGE_TOP):
+        mask |= EDGE_BOTTOM
+    if cx > 0 and (at(cx - 1, cy) & EDGE_RIGHT):
+        mask |= EDGE_LEFT
+    if cx < GRID_W - 1 and (at(cx + 1, cy) & EDGE_LEFT):
+        mask |= EDGE_RIGHT
+
+    return mask
+
+
 def render(level, out_path):
     index = level["number"] - 1
     skin_index = (index // 2) % len(SKINS)
     cells = load_strip("tiles_" + SKINS[skin_index])
+    walls = load_strip("walls")
     ball = load_strip("ball")[0]
+
+    toplip = table("mt_toplip")
+    edges = table("tile_wall_edges")
+    draws_image = table("tile_draws_image")
 
     img = Image.new("RGBA", (SCREEN_W, SCREEN_H), backdrop_for(skin_index))
 
     lx, ly, rx, ry = level["pos"]
     lit = {(lx, ly), (rx, ry)}
+    tiles = level["tiles"]
 
     for cy in range(GRID_H):
         for cx in range(GRID_W):
-            t = level["tiles"][cy * GRID_W + cx]
+            t = tiles[cy * GRID_W + cx]
             mt = t
             if t in GOAL_IDS and (cx, cy) in lit:
                 mt = 16 + GOAL_IDS.index(t)
+            if cy > 0 and draws_image[tiles[(cy - 1) * GRID_W + cx]]:
+                mt = toplip[mt]
             img.alpha_composite(cells[mt], (cx * CELL, GRID_TOP_PX + cy * CELL))
+
+    # Walls are their own layer on the GBA (BG2, above the art), and shared by
+    # every skin -- so they go down after all the floors, not per cell.
+    for cy in range(GRID_H):
+        for cx in range(GRID_W):
+            img.alpha_composite(walls[wall_mask(tiles, edges, cx, cy)],
+                                (cx * CELL, GRID_TOP_PX + cy * CELL))
 
     for (bx, by) in ((lx, ly), (rx, ry)):
         img.alpha_composite(ball, (bx * CELL, GRID_TOP_PX + by * CELL))

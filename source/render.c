@@ -3,10 +3,12 @@
 #include "render.h"
 #include "fontmap.h"
 #include "skins.h"
+#include "palettes.h"
 
 #include "tiles_purple.h"
 #include "tiles_orange.h"
 #include "tiles_green.h"
+#include "ball.h"
 #include "font.h"
 #include "title.h"
 #include "walls.h"
@@ -48,6 +50,57 @@ static const u32 skin_tiles_len[SKIN_COUNT] = {
     tiles_purpleTilesLen, tiles_orangeTilesLen, tiles_greenTilesLen,
 };
 
+//--- palettes --------------------------------------------------------------
+//
+// Two colour schemes over one set of tiles. The artwork's own palette is drawn
+// for a phone screen and goes flat on an unlit GBA; the high-contrast one in
+// palettes.h regrades it onto separated brightness tiers, which looks heavy on
+// a monitor and readable on hardware. Nothing but palette RAM differs, so the
+// switch is seven memcpy16s and can happen mid-level.
+
+static bool g_high_contrast;
+
+// Which backdrop the current screen wants. The backdrop lives in a single
+// palette entry that every screen overwrites, so a toggle has to know what to
+// put back. TITLE_BACKDROP means "whatever the title art's own bank says".
+#define TITLE_BACKDROP (-1)
+static int g_backdrop_src = TITLE_BACKDROP;
+
+static void apply_backdrop(void)
+{
+    if (g_backdrop_src == TITLE_BACKDROP)
+        pal_bg_mem[0] = g_high_contrast ? pal_hc_title[0] : titlePal[0];
+    else
+        pal_bg_mem[0] = g_high_contrast ? skin_backdrop_hc[g_backdrop_src]
+                                        : skin_backdrop[g_backdrop_src];
+}
+
+static void upload_palettes(void)
+{
+    for (int s = 0; s < SKIN_COUNT; s++)
+        memcpy16(&pal_bg_mem[s * 16],
+                 g_high_contrast ? pal_hc_skin[s] : skin_pal[s], 16);
+
+    // The font is white on a near-black shadow either way, so it has nothing
+    // to gain from a regrade.
+    memcpy16(&pal_bg_mem[FONT_BANK * 16], fontPal, 16);
+    memcpy16(&pal_bg_mem[TITLE_BANK * 16],
+             g_high_contrast ? pal_hc_title : titlePal, 16);
+    memcpy16(&pal_bg_mem[WALL_BANK * 16],
+             g_high_contrast ? pal_hc_walls : wallsPal, 16);
+    memcpy16(pal_obj_mem, g_high_contrast ? pal_hc_ball : ballPal, 16);
+
+    apply_backdrop();
+}
+
+void render_set_contrast(bool high)
+{
+    g_high_contrast = high;
+    upload_palettes();
+}
+
+//---------------------------------------------------------------------------
+
 static inline SCR_ENTRY *art_map(void)
 {
     return se_mem[SBB_ART];
@@ -76,20 +129,15 @@ static inline u16 text_blank(void)
 void render_init(void)
 {
     for (int s = 0; s < SKIN_COUNT; s++)
-    {
         memcpy32(BG_TILE(SKIN_BASE + s * SKIN_TILES),
                  skin_tiles[s], skin_tiles_len[s] / 4);
-        memcpy16(&pal_bg_mem[s * 16], skin_pal[s], 16);
-    }
 
     memcpy32(BG_TILE(FONT_BASE), fontTiles, fontTilesLen / 4);
-    memcpy16(&pal_bg_mem[FONT_BANK * 16], fontPal, 16);
-
     memcpy32(BG_TILE(TITLE_BASE), titleTiles, titleTilesLen / 4);
-    memcpy16(&pal_bg_mem[TITLE_BANK * 16], titlePal, 16);
-
     memcpy32(BG_TILE(WALL_BASE), wallsTiles, wallsTilesLen / 4);
-    memcpy16(&pal_bg_mem[WALL_BANK * 16], wallsPal, 16);
+
+    // Both schemes share these tiles; only the palettes differ.
+    upload_palettes();
 
     // Text gets its own layer. A tilemap cell shows exactly one tile, so
     // drawing glyphs into the art layer would punch them through it -- and
@@ -248,7 +296,9 @@ void render_plain(int skin)
 
     render_text_clear();
     render_walls_clear();
-    pal_bg_mem[0] = skin_backdrop[skin];
+
+    g_backdrop_src = skin;
+    apply_backdrop();
 }
 
 // grit's -mLs lays the map out in 32x32 screenblock chunks, padding the
@@ -273,7 +323,8 @@ void render_title_art(void)
     render_walls_clear();
 
     // Columns 30-31 are off-screen; leave them as whatever the caller set.
-    pal_bg_mem[0] = titlePal[0];
+    g_backdrop_src = TITLE_BACKDROP;
+    apply_backdrop();
 }
 
 // Hardware brightness fade over every layer, sprites and the backdrop

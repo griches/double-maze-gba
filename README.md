@@ -14,17 +14,20 @@ tiles at the same time and you advance.
 
 | | |
 |---|---|
-| ![Level 5](docs/screenshots/gameplay.png) | ![Level 14](docs/screenshots/gameplay2.png) |
+| ![Level 5](docs/screenshots/gameplay.png) | ![Level 5 in high contrast](docs/screenshots/contrast.png) |
+| ![Level 14](docs/screenshots/gameplay2.png) | ![You died](docs/screenshots/died.png) |
 | ![Level select](docs/screenshots/level-select.png) | ![Instructions](docs/screenshots/instructions.png) |
-| ![Credits](docs/screenshots/credits.png) | ![You died](docs/screenshots/died.png) |
 
 The three tile skins cycle every two levels, as they do in the original. All
 screenshots are captured from the running ROM by `tools/grab_screen.py`.
 
+The two images on the top row are the same level in the two contrast schemes --
+see [Contrast](#contrast) below for why the second one exists.
+
 ## Controls
 
 **Title:** A to play, B for instructions, SELECT for credits, START toggles
-music.
+music. **L toggles contrast, from any screen.**
 **Instructions / credits:** any button returns to the title.
 **Level select:** D-pad to move, A to play, B to go back.
 
@@ -36,6 +39,7 @@ music.
 | START | Skip to the next level |
 | SELECT | Restart the current level |
 | B | Back to level select |
+| L | Toggle contrast |
 
 ## Building
 
@@ -79,6 +83,7 @@ source/
   save.c / save.h        SRAM progress, checksummed
   levels.c / levels.h    generated: 40 levels, tiles + decoded wall bitfields
   skins.h                generated: backdrops, lit-goal lookup, sprite indices
+  palettes.h             generated: the high-contrast palettes
   fontmap.h              generated: ASCII -> glyph lookup
 gfx/
   tiles_purple/orange/green.png + .grit    generated: 21 metatiles per skin
@@ -90,9 +95,11 @@ levels/                  levels authored here, overriding the iOS project
 tools/
   extract_levels.py      iOS level*.txt  -> source/levels.c
   make_level35.py        authors and solves the replacement level 35
-  make_assets.py         iOS artwork     -> gfx/*.png, source/skins.h
+  make_assets.py         iOS artwork     -> gfx/*.png, source/skins.h,
+                                            source/palettes.h
   make_audio.py          iOS audio       -> audio/*.wav
   preview_level.py       renders a level to PNG without running the ROM
+  washout.py             simulates an unlit GBA panel, for contrast checks
 docs/screenshots/        captured from the ROM, used by this README
 ```
 
@@ -121,6 +128,39 @@ transparent, so `pal_bg_mem[0]` carries the skin's backdrop colour — sampled
 from the matching iOS background image.
 
 Like the original, the skin advances every two levels: `floor(index / 2) % 3`.
+
+## Contrast
+
+The artwork was drawn for a backlit sRGB phone. An unlit AGB or a frontlit
+AGS-001 is a reflective panel: it never gets darker than the room light
+bouncing off it and never brighter than paper, so the whole picture lands
+inside a narrow band of pale grey, and the weak colour filters desaturate it on
+the way through. The original palette puts the backdrop, the floor tiles and
+the wall bars within about forty luminance points of each other. On a monitor
+that reads as three distinct things; on hardware it collapses to one flat tone,
+and the wall bars — the only thing on screen you actually need to read —
+disappear.
+
+So there are two palettes. **L** switches between them, from any screen, and
+the choice is saved:
+
+- **normal** — the artwork's own colours, which is what looks right on a
+  monitor or an emulator.
+- **high** — the same colours regraded onto three separated brightness tiers:
+  backdrop darkest, floor in the middle, wall bars brightest. Ordering them by
+  luminance means they stay told apart even once the colour is gone. It looks
+  heavy and oversaturated on a monitor, which is the same trade in reverse —
+  hence a toggle rather than a replacement.
+
+Nothing but palette RAM differs. `tools/make_assets.py` applies the grade to
+each *palette entry* rather than to the pixels, so both schemes share one
+tileset and one set of maps, and switching is seven `memcpy16`s. The grade
+constants and the reasoning behind each one live at the top of that file; the
+generated result is `source/palettes.h`.
+
+`tools/washout.py` simulates the panel — it squeezes a screenshot into the
+band a real one can show and strips most of the saturation — which is how the
+tiers above were tuned without a device in hand.
 
 ## Screen transitions
 
@@ -211,11 +251,23 @@ build switches instead:
 ```sh
 make DEFINES=-DBOOT_LEVEL=0                 # boot straight into a level
 make DEFINES="-DBOOT_LEVEL=0 -DBOOT_DEATH"  # ...and loop the death sequence
+make DEFINES=-DBOOT_SCREEN=APP_CREDITS      # boot straight to a menu screen
+make DEFINES=-DBOOT_CONTRAST=1              # force a contrast scheme
 ```
+
+`BOOT_DEATH` loops rather than firing once: mGBA runs unthrottled with the
+debugger attached, so a one-shot death is long over by the time the tool can
+ask for a frame. `BOOT_CONTRAST` pins the scheme so a capture doesn't depend on
+whatever the `.sav` in the working directory happens to say.
 
 `tools/preview_level.py N` renders level N to a PNG from the level tables
 without running anything. It reimplements the layout, so it validates data and
 art but not the ROM — use `make shot` when you need the truth.
+
+`tools/washout.py in.png out.png` pushes a capture through an approximation of
+an unlit GBA panel: everything squeezed into the narrow band such a screen can
+actually show, with most of the saturation gone. Art that survives that reads
+on hardware; art that turns into one flat rectangle does not.
 ## Audio
 
 Six effects plus the 89-second background track, all from the original.
@@ -237,8 +289,14 @@ machine is broken — it can't find `libx265.215.dylib`.)
 ## Save data
 
 32KB cartridge SRAM at `0x0E000000`, holding the completed-level flags, the
-level-select cursor position and the music setting, behind a magic number and
-a checksum. Progress is written the moment a level is solved.
+level-select cursor position, the music setting and the contrast setting,
+behind a magic number and a checksum. Progress is written the moment a level is
+solved.
+
+The block is versioned, and adding the contrast flag grew it. `save.c` reads a
+version 2 block back into the current struct rather than rejecting it, so a
+cartridge written by an older build keeps its forty levels of progress — a
+display setting isn't worth wiping a save for.
 
 The ROM has to carry the string `SRAM_V113` for emulators and flashcarts to
 detect the backup hardware. Getting it to survive is fiddlier than it looks:

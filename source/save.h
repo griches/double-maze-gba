@@ -10,6 +10,7 @@ typedef struct SaveData
     u8 completed[LEVEL_COUNT];   // 1 once the level has been solved
     u8 last_level;               // where the cursor sits on the select screen
     u8 music_on;
+    u8 high_contrast;            // the palette regraded for an unlit screen
 } SaveData;
 
 extern SaveData g_save;

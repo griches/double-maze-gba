@@ -253,6 +253,10 @@ def main():
                          "so it can't be read back)")
     ap.add_argument("--delay", type=float, default=3.0,
                     help="seconds to let the ROM run before capturing")
+    ap.add_argument("--scale", type=int, default=1,
+                    help="nearest-neighbour upscale; the README's screenshots "
+                         "are captured at 3 so the 240x160 frame is legible "
+                         "without the browser resampling it")
     args = ap.parse_args()
 
     proc = None
@@ -272,6 +276,9 @@ def main():
     try:
         mem = dump(args.port, args.elf)
         img, bldcnt = render(mem, args.fade, args.mosaic)
+        if args.scale > 1:
+            img = img.resize((img.width * args.scale, img.height * args.scale),
+                             Image.NEAREST)
         img.save(args.out)
         bg0 = struct.unpack_from("<H", mem["io"], 0x08)[0]
         print("wrote %s  (BLDCNT=0x%04X, BG0CNT=0x%04X, mosaic bit %s)"
