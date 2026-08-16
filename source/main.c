@@ -323,11 +323,12 @@ static void draw_title(void)
     // the capture pipeline can't hear anything. Build with
     //   make DEFINES=-DAUDIO_DEBUG
     {
-        char line[] = "SFX H:__ ACT:_";
-        int h = audio_music_handle();
-        line[7]  = '0' + (h / 10) % 10;
-        line[8]  = '0' + h % 10;
-        line[13] = audio_music_playing() ? 'Y' : 'N';
+        char line[] = "ROW:___ SND:_";
+        int r = audio_music_row();
+        line[4]  = '0' + (r / 100) % 10;
+        line[5]  = '0' + (r / 10) % 10;
+        line[6]  = '0' + r % 10;
+        line[12] = audio_music_playing() ? 'Y' : 'N';
         render_text_centred(19, line);
     }
 #endif
@@ -355,12 +356,10 @@ static void draw_credits(void)
     render_plain(0);
     render_text_centred(1, "CREDITS");
 
-    render_text_centred(3,  "PROGRAMMING");
-    render_text_centred(5,  "GARY RICHES");
-    render_text_centred(8,  "DESIGN");
-    render_text_centred(10, "ERIC RECKLING");
-    render_text_centred(13, "MUSIC");
-    render_text_centred(15, "KEVIN MACLEOD");
+    render_text_centred(5,  "PROGRAMMING");
+    render_text_centred(7,  "GARY RICHES");
+    render_text_centred(11, "DESIGN");
+    render_text_centred(13, "ERIC RECKLING");
 
     render_text_centred(18, "B - BACK");
 }

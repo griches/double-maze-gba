@@ -75,29 +75,34 @@ Makefile                 devkitARM template + grit/mmutil rules + run target
 source/
   main.c                 app state machine, movement rules, menus
   render.c / render.h    tilemap painting, goal lighting, text, HUD
-  audio.c / audio.h      maxmod wrapper: effects and looping music
+  audio.c / audio.h      maxmod wrapper for the sound effects
+  chiptune.c/.h          PSG sequencer: the music, played on the sound chip
   save.c / save.h        SRAM progress, checksummed
   levels.c / levels.h    generated: 40 levels, tiles + decoded wall bitfields
   skins.h                generated: backdrops, lit-goal lookup, sprite indices
   palettes.h             generated: the high-contrast palettes
+  music.h                generated: the score, and its period tables
   fontmap.h              generated: ASCII -> glyph lookup
 gfx/
   tiles_purple/orange/green.png + .grit    generated: 21 metatiles per skin
   ball.png + .grit                         generated: ball + 12 death frames
   title.png + .grit                        generated: title art, tiles + map
   font.png + .grit                         generated: 48 glyphs, 5x7 in 8x8
-audio/                   generated: 6 effects + looping music, for mmutil
+audio/                   generated: the 6 sound effects, for mmutil
 levels/                  levels authored here, overriding the iOS project
 tools/
   extract_levels.py      iOS level*.txt  -> source/levels.c
   make_level35.py        authors and solves the replacement level 35
   make_assets.py         iOS artwork     -> gfx/*.png, source/skins.h,
                                             source/palettes.h
-  make_audio.py          iOS audio       -> audio/*.wav
+  make_audio.py          iOS effects     -> audio/*.wav
+  make_chiptune.py       composes the music -> source/music.h + a preview WAV
   preview_level.py       renders a level to PNG without running the ROM
   solve_level.py         shortest solutions, by search over both balls at once
   washout.py             simulates an unlit GBA panel, for contrast checks
+  grab_sound.py          reads the sound registers out of the running ROM
 docs/SOLUTIONS.md        generated: a shortest solution for every level
+docs/music-preview.wav   generated on demand: the music, to listen to
 docs/screenshots/        captured from the ROM, used by this README
 ```
 
@@ -268,21 +273,53 @@ actually show, with most of the saturation gone. Art that survives that reads
 on hardware; art that turns into one flat rectangle does not.
 ## Audio
 
-Six effects plus the 89-second background track, all from the original.
+Six sound effects, from the original, played through maxmod on the two Direct
+Sound channels. 8-bit mono at 11025 Hz, 48KB in total. `tools/make_audio.py`
+converts them, using macOS's built-in `afconvert`. (The Homebrew `ffmpeg` on
+this machine is broken — it can't find `libx265.215.dylib`.)
 
-maxmod's streaming API turns out to be Nintendo DS only, and an 89-second
-recording can't become a tracker module without transcribing it. The way
-through: mmutil reads loop points from a WAV's `smpl` chunk, so the music is a
-single long sample tagged with a full-length loop, played as an effect. It
-loops seamlessly and needs no retriggering from code. `tools/make_audio.py`
-writes that chunk by hand, since nothing off the shelf does.
+## Music
 
-Effects are 8-bit mono at 11025 Hz; the music is 8-bit mono at 10512 Hz. That
-puts 984KB of samples in a 1MB ROM — fine for a cartridge, and the reason the
-ROM jumped from 23KB.
+The music is not a recording. It's a score, played on the GBA's four PSG
+channels — two pulse waves, a 4-bit programmable wave, and noise.
 
-Decoding uses macOS's built-in `afconvert`. (The Homebrew `ffmpeg` on this
-machine is broken — it can't find `libx265.215.dylib`.)
+It used to be a recording, and that was the single worst thing in the ROM. An
+89-second track decoded to 8-bit mono came to 936KB: **90% of the cartridge**,
+for something that still sounded muddy, because Direct Sound is 8-bit and no
+sample rate fixes that. Raising the rate to 32 kHz would have tripled the ROM
+and left the quantisation noise exactly where it was.
+
+The PSG channels were sitting idle the whole time — maxmod only drives Direct
+Sound — so the music moved onto real synthesis hardware and the ROM went from
+**1,043,556 bytes to 109,988**, a tenth of the size, with no mixer channel and
+no Direct Sound bandwidth spent on it.
+
+| | before | after |
+|---|---:|---:|
+| music | 936,424 bytes of PCM | 2,232 bytes of score |
+| ROM | 1,043,556 | 109,988 |
+
+`tools/make_chiptune.py` holds the composition and emits two things from it:
+`source/music.h`, which is what the GBA plays, and `docs/music-preview.wav`,
+which is the same score rendered on this machine so it can be listened to
+without a flashcart. The WAV is 7MB and one command away, so it isn't checked
+in — run the tool. The renderer is not a flattering approximation — it
+quantises every note to the same 11-bit period register the console programs
+(under 3.4 cents off across the whole range), runs the same 15-step volume
+envelopes, and clocks the noise channel through the same LFSR.
+
+`source/chiptune.c` is the player: one row of the score every 10 frames, off
+the VBlank the game already waits on. The hardware holds each note and runs
+its own envelope, so a row costs at most four register writes and the rows
+between cost nothing.
+
+Nothing here can hear the output, so `tools/grab_sound.py` reads the sound
+registers out of the running ROM over mGBA's GDB stub and reports what the
+hardware is actually doing — which channels are routed, at what volume, with
+which duty and envelope, whether `SOUNDSTAT` says they're sounding, and
+whether the wave RAM holds the table it should. It also prints maxmod's Direct
+Sound bits, because the PSG volume control shares a register with them and
+clobbering it would silently kill the sound effects.
 
 ## Save data
 
@@ -332,14 +369,13 @@ From the original iOS release:
 
 - **Programming** — Gary Riches
 - **Design** — Eric Reckling
-- **Music** — Kevin MacLeod
 
-Everything under `gfx/`, `audio/` and the level data is derived from that
+The artwork, the sound effects and the level data are derived from that
 release. `tools/` regenerates it all from the iOS project; the checked-in
 copies are build inputs, so a clone builds without it.
 
-The background music is Kevin MacLeod's, re-encoded to 8-bit mono for the
-GBA's mixer. His work is normally released under Creative Commons Attribution
-— credit is given here, on the in-game credits screen, and in the ROM. The
-sound effects come from a stock library used in the 2009 release; if you fork
-this, check that library's terms before redistributing `audio/`.
+The music is not from the original — it's an original chiptune written for the
+console's own PSG channels, so nothing of the 2009 soundtrack ships here. See
+[Music](#music). The sound effects do still come from the stock library used
+in 2009; if you fork this, check that library's terms before redistributing
+`audio/`.

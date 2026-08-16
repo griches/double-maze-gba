@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Convert the iOS audio into a maxmod soundbank source directory.
+"""Convert the iOS sound effects into a maxmod soundbank source directory.
 
 Effects are downsampled to 8-bit mono at 11025 Hz, which is plenty for the
 GBA's mixer and keeps them a few KB each.
 
-The music is the awkward one. maxmod's streaming API is Nintendo DS only, and
-an 89-second recording can't become a tracker module without transcribing it.
-What does work: mmutil reads loop points from a WAV's `smpl` chunk, so a long
-sample tagged with a full-length loop plays as a seamlessly looping effect.
-Nothing off the shelf writes `smpl`, so we emit that WAV by hand.
+The music does not come through here. It used to: the iOS track was decoded to
+a long 8-bit WAV with a full-length loop point in its `smpl` chunk, which
+mmutil turns into a seamlessly looping effect, since maxmod's streaming API is
+Nintendo DS only. It worked, and it cost 936KB -- 90% of the ROM -- for
+something Direct Sound could only ever play back at 8 bits. The music is a
+score now, played on the console's PSG channels by source/chiptune.c and
+written by tools/make_chiptune.py, and the original track ships nowhere.
 
 Decoding goes through macOS's built-in afconvert rather than ffmpeg, which
-needs no install and handles both the wavs and the mp3.
+needs no install.
 
     python3 tools/make_audio.py [path-to-ios-project]
 """
@@ -27,7 +29,6 @@ AUDIO = os.path.join(HERE, "audio")
 DEFAULT_IOS = "/Users/garyriches/Documents/Source/DoubleMaze/DoubleMaze"
 
 SFX_RATE = 11025
-MUSIC_RATE = 10512        # 89s at this rate is ~915KB of ROM
 
 # output name -> source file. The name becomes mmutil's SFX_<NAME> identifier.
 EFFECTS = [
@@ -38,7 +39,6 @@ EFFECTS = [
     ("fanfare", "Glass_Chime_Tinkle_High.wav"),    # level complete
     ("click",   "buttonclick.wav"),                # slot 5: UI
 ]
-MUSIC = "music.mp3"
 
 
 def read_data_chunk(path):
@@ -112,11 +112,12 @@ def main():
         print("%-10s %7d bytes  %5.2fs  <- %s"
               % (name, len(pcm), len(pcm) / SFX_RATE, src))
 
-    pcm = decode_pcm_u8(os.path.join(ios, MUSIC), MUSIC_RATE)
-    write_wav(os.path.join(AUDIO, "music.wav"), pcm, MUSIC_RATE, loop=True)
-    total += len(pcm)
-    print("%-10s %7d bytes  %5.2fs  <- %s (looping)"
-          % ("music", len(pcm), len(pcm) / MUSIC_RATE, MUSIC))
+    # A music.wav left over from an older run would be packed into the
+    # soundbank by the Makefile's wildcard and put 936KB back in the ROM.
+    stale = os.path.join(AUDIO, "music.wav")
+    if os.path.exists(stale):
+        os.remove(stale)
+        print("removed stale music.wav -- the music is a PSG score now")
 
     print("\n%d bytes of sample data total" % total)
 

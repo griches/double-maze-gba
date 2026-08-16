@@ -28,8 +28,9 @@ void audio_music_set(bool on);
 bool audio_music_enabled(void);
 
 // Diagnostics: the capture pipeline has no way to hear the output, so these
-// let a debug build report whether the music actually holds a mixer channel.
-int  audio_music_handle(void);
+// let a debug build report how far the sequencer has got and whether the PSG
+// channels say they're sounding.
+int  audio_music_row(void);
 bool audio_music_playing(void);
 
 #endif // DOUBLE_MAZE_AUDIO_H
