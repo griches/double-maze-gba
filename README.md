@@ -367,15 +367,7 @@ themselves.
 
 ![Box art](docs/boxart/double-maze-cover.png)
 
-A GBA-style cover for the ROM. The illustration was generated with Gemini
-(Nano Banana), then the spine was replaced with a real Game Boy Advance cover
-template — [olidall's on DeviantArt](https://www.deviantart.com/olidall/art/Game-Boy-Advance-Game-Cover-Art-Template-824702188)
-— so the logo and brushed-metal strip are the genuine proportions rather than
-something the model invented. The rating box caption was redrawn by hand; the
-model garbled it.
-
-The checked-in copy is 1024px. The 4096px master stays out of git — see
-`.gitignore` — because it's 14MB and nothing here needs it.
+A GBA-style cover for the ROM. 
 
 ## Credits and assets
 
