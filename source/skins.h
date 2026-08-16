@@ -31,9 +31,10 @@ static const u8 mt_toplip[MT_COUNT] = {
     0, 1, 2, 3, 4, 5, 21, 22, 23, 24, 25, 11, 12, 13, 14, 26, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26
 };
 
-// Which edges each tile id walls off, as EDGE_* bits. Note tile 15
-// draws all four walls but is passable in every direction -- that
-// inconsistency is in the original, and this table is about looks.
+// Which edges each tile id walls off, as EDGE_* bits. Tile 15 draws
+// all four, and now blocks all four to match -- the original's tile
+// switch filed it with the holes, which is what made level 27
+// impossible. See the note in tools/extract_levels.py.
 #define EDGE_TOP    1
 #define EDGE_RIGHT  2
 #define EDGE_BOTTOM 4

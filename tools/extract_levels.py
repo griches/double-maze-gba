@@ -45,7 +45,22 @@ TILE_TABLE = {
     12: (1, 1, 1, 0, 1, 0),   # wall on right + goal
     13: (1, 0, 1, 1, 1, 0),   # wall on bottom + goal
     14: (1, 1, 0, 1, 1, 0),   # wall on left + goal
-    15: (1, 1, 1, 1, 0, 1),   # hole / death (duplicate of 6)
+    # Walled on all four edges: nothing can enter it, and it isn't fatal.
+    #
+    # This is the one place the port departs from the original's switch, which
+    # has `case 15:` fall in with `case 6:` -- passable in every direction, and
+    # death. Everything else about the tile says otherwise: renderLevel draws
+    # wall5.png for it ("All walls"), and the level editor labels it with
+    # editorTileWall.png and files it under "Attach a wall". It plainly means
+    # a solid block, and the switch is a bug.
+    #
+    # It matters because tile 15 appears exactly 15 times in the whole game,
+    # all of them in level 27 -- which, taken as holes, cannot be finished:
+    # with nothing in that level able to block a ball, the two never change
+    # their offset, and the goals aren't the offset they start at. Read as
+    # blocks it's an ordinary level with a 7-move solution. See
+    # tools/solve_level.py, which proves both halves of that.
+    15: (0, 0, 0, 0, 0, 0),
 }
 
 WALL_UP, WALL_DOWN, WALL_LEFT, WALL_RIGHT = 1, 2, 4, 8

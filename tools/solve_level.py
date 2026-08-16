@@ -164,6 +164,10 @@ def solve(level):
 # original polarity on purpose: --verify replays a solution against it and the
 # tiles[] array, so a mistake in the decode shows up as the two disagreeing
 # rather than as both being wrong the same way.
+#
+# Id 15 reads (0,0,0,0,0,0) -- walled on all four edges, so nothing can enter
+# it -- rather than the hole the original's switch makes of it. See the note on
+# the same entry in tools/extract_levels.py for why.
 TILE_TABLE = {
     0:  (1, 1, 1, 1, 0, 0),   1:  (0, 1, 1, 1, 0, 0),
     2:  (1, 1, 1, 0, 0, 0),   3:  (1, 0, 1, 1, 0, 0),
@@ -172,7 +176,7 @@ TILE_TABLE = {
     8:  (1, 1, 1, 0, 0, 1),   9:  (1, 0, 1, 1, 0, 1),
     10: (1, 1, 0, 1, 0, 1),   11: (0, 1, 1, 1, 1, 0),
     12: (1, 1, 1, 0, 1, 0),   13: (1, 0, 1, 1, 1, 0),
-    14: (1, 1, 0, 1, 1, 0),   15: (1, 1, 1, 1, 0, 1),
+    14: (1, 1, 0, 1, 1, 0),   15: (0, 0, 0, 0, 0, 0),
 }
 
 # Which slot of a TILE_TABLE row each direction reads when leaving, and which
@@ -224,7 +228,7 @@ def verify(level, path):
 
 # Ids that stop a ball on some edge. Everything else either lets it through or
 # kills it -- neither of which can separate the two balls.
-BLOCKING_IDS = {1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13, 14}
+BLOCKING_IDS = {1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 
 
 def diagnose(level):
@@ -326,12 +330,14 @@ def write_markdown(results, out_path):
         longest = max(solved, key=lambda r: len(r["path"]))
         total = sum(len(r["path"]) for r in solved)
         lines += [
-            "%d of the %d levels are solvable. The shortest is level %d at %d"
-            % (len(solved), len(results), shortest["number"],
-               len(shortest["path"])),
-            "moves, the longest level %d at %d, and playing every solvable one"
-            % (longest["number"], len(longest["path"])),
-            "back to back on these routes takes %d presses." % total,
+            ("All %d levels are solvable." if len(solved) == len(results)
+             else "%d of the levels are solvable.") % len(solved),
+            "The shortest is level %d at %d moves, the longest level %d at %d,"
+            % (shortest["number"], len(shortest["path"]),
+               longest["number"], len(longest["path"])),
+            "and playing every one back to back on these routes takes %d"
+            % total,
+            "presses.",
             "",
         ]
 

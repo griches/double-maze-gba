@@ -20,22 +20,10 @@ Regenerate with:
 python3 tools/solve_level.py --all -o docs/SOLUTIONS.md
 ```
 
-39 of the 40 levels are solvable. The shortest is level 25 at 6
-moves, the longest level 4 at 39, and playing every solvable one
-back to back on these routes takes 668 presses.
-
-> **Level 27 cannot be finished.** This isn't a limit of the
-> search -- it's provable from the level data:
->
-> - Nothing in this level blocks movement -- the only tile ids present are floor, goal and hole.
-> - So no press can ever hold one ball while the other moves, and the offset between the two never changes for the whole level.
-> - They start +6,+2 apart.
-> - Finishing with a ball on (11, 3) and the other on (3, 4) would need them -8,+1 apart.
-> - Finishing with a ball on (3, 4) and the other on (11, 3) would need them +8,-1 apart.
-> - No arrangement matches, so the pair can never be home together.
->
-> This is the level data as the original iOS game shipped it. That game had a
-> skip button, and so does this one -- START moves on.
+All 40 levels are solvable.
+The shortest is level 25 at 6 moves, the longest level 4 at 39,
+and playing every one back to back on these routes takes 675
+presses.
 
 | Level | Moves | Solution |
 |---:|---:|---|
@@ -65,7 +53,7 @@ back to back on these routes takes 668 presses.
 | 24 | 18 | →→→↑←↓←↓↓→→→↑↑←←↑→ |
 | 25 | 6 | ↓→↓↓↑← |
 | 26 | 21 | ←↓↓↑→→↓→→→←↑←←↑→→↓←↑↑ |
-| 27 | — | **no solution** |
+| 27 | 7 | ↓→↓←↑↑→ |
 | 28 | 14 | ↑↓→→↑↑↑↓↓→↓→→↓ |
 | 29 | 9 | →→←←↑↑←←↓ |
 | 30 | 14 | ↑→↑↑↑→→→↓←←←↓↓ |
@@ -134,7 +122,7 @@ back to back on these routes takes 668 presses.
 
 **Level 26** — 21 moves: LEFT, DOWN x2, UP, RIGHT x2, DOWN, RIGHT x3, LEFT, UP, LEFT x2, UP, RIGHT x2, DOWN, LEFT, UP x2
 
-**Level 27** — cannot be finished; see above
+**Level 27** — 7 moves: DOWN, RIGHT, DOWN, LEFT, UP x2, RIGHT
 
 **Level 28** — 14 moves: UP, DOWN, RIGHT x2, UP x3, DOWN x2, RIGHT, DOWN, RIGHT x2, DOWN
 

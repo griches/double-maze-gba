@@ -6,9 +6,9 @@ balls in that direction, and each is blocked independently by the walls on its
 own tile edges. Land on a hole and the level restarts; get both balls onto goal
 tiles at the same time and you advance.
 
-40 levels, carried over from the original along with its artwork
-(level 35 re-authored -- see below). See
-[EXTRACTION.md](EXTRACTION.md) for how the rules and assets were recovered.
+40 levels, carried over from the original along with its artwork.
+See [EXTRACTION.md](EXTRACTION.md) for how the rules and assets were
+recovered, including the two levels that needed fixing to be playable.
 
 ![Title screen](docs/screenshots/title.png)
 

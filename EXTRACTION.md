@@ -47,11 +47,29 @@ blocked edge, plus optional goal/death flags. From the `switch (i)` in
 | 12 | wall on right + goal  | Y | Y | Y | · | Y | – |
 | 13 | wall on bottom + goal | Y | · | Y | Y | Y | – |
 | 14 | wall on left + goal   | Y | Y | · | Y | Y | – |
-| 15 | hole (duplicate of 6) | Y | Y | Y | Y | – | Y |
+| 15 | walled all round (see below) | · | · | · | · | – | – |
 
 Tile 6 is by far the most common (2,243 of 4,680 placed tiles) — it's both the
 border and the interior obstacle. Tile 11 appears exactly once in the whole set,
 and 12 never appears at all.
+
+### Tile 15 is a wall, not a hole
+
+The `switch` above puts `case 15:` in the same branch as `case 6:` — passable
+in every direction, and fatal. Everything else about the tile disagrees.
+`renderLevel` draws `wall5.png` for it, commented "All walls"; the level editor
+files it under "Attach a wall" and labels its button `editorTileWall.png`. It
+means a solid block, and the `switch` is a bug.
+
+It shows up in exactly one place: 15 tiles, all in level 27, and nowhere else in
+the game. Taken as holes, level 27 cannot be finished — nothing in it can block
+a ball, so the two never change the offset they start at, and that offset isn't
+the one the goals need. Taken as blocks it's an ordinary level with a 7-move
+solution. `tools/solve_level.py` proves both halves of that.
+
+So the port reads tile 15 as walled on all four edges and harmless, which is
+the one place it knowingly departs from the original's logic. The rendering
+never needed changing: it already drew four walls.
 
 ## Movement
 
