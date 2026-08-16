@@ -307,26 +307,6 @@ detect the backup hardware. Getting it to survive is fiddlier than it looks:
 real reference from live code instead. If saving ever silently stops working,
 check `strings "Double Maze.gba" | grep SRAM_V113` first.
 
-## Level 35
-
-`level35.txt` is empty in the original project -- the tile data was lost,
-though `level35POS.txt` survived with both start positions. `make_level35.py`
-builds a replacement around those positions and verifies it by breadth-first
-search over the joint state of both balls, which also yields the shortest
-solution. It scores candidates by how much longer the joint solution is than
-either ball's own route, so the two mazes actually interfere rather than being
-walked in parallel.
-
-The result lives in `levels/`, which `extract_levels.py` prefers over the iOS
-project, so the original repo stays untouched. Solution, 15 moves:
-
-```
-DOWN DOWN UP RIGHT UP UP UP LEFT LEFT RIGHT RIGHT DOWN DOWN RIGHT RIGHT
-```
-
-Restoring it grew the save's completed-level array, so `SAVE_VERSION` went to
-2 and existing progress resets once.
-
 ## Solving
 
 `tools/solve_level.py` plays levels the way the ROM does and finds the shortest
@@ -349,21 +329,6 @@ the search and the flags decode against each other rather than against
 themselves.
 
 [docs/SOLUTIONS.md](docs/SOLUTIONS.md) is the generated write-up. **Spoilers.**
-
-### Level 27 can't be finished
-
-The search says so, and the level data proves it without searching anything.
-Level 27 contains no blocking tiles at all — only floor, goals and holes — so
-nothing can ever hold one ball while the other moves, and the offset between
-the two is fixed for the whole level. They start 6 columns and 2 rows apart;
-the two goals are 8 columns and 1 row apart. The pair can never be home
-together.
-
-That's the data as the original iOS game shipped it, checked against the
-`switch` in `Double_MazeViewController.m` — tile 15 is a hole there too, sharing
-its `case` with 6, even though it *draws* as four walls. It's the same class of
-loss as the empty `level35.txt`, and probably why the original had a skip
-button. START skips here too, so it isn't a wall in the player's way.
 
 ## Credits and assets
 
