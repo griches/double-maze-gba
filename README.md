@@ -99,7 +99,9 @@ tools/
                                             source/palettes.h
   make_audio.py          iOS audio       -> audio/*.wav
   preview_level.py       renders a level to PNG without running the ROM
+  solve_level.py         shortest solutions, by search over both balls at once
   washout.py             simulates an unlit GBA panel, for contrast checks
+docs/SOLUTIONS.md        generated: a shortest solution for every level
 docs/screenshots/        captured from the ROM, used by this README
 ```
 
@@ -324,6 +326,44 @@ DOWN DOWN UP RIGHT UP UP UP LEFT LEFT RIGHT RIGHT DOWN DOWN RIGHT RIGHT
 
 Restoring it grew the save's completed-level array, so `SAVE_VERSION` went to
 2 and existing progress resets once.
+
+## Solving
+
+`tools/solve_level.py` plays levels the way the ROM does and finds the shortest
+route through them. One press moves both balls, so the state that matters is
+the pair of positions: it searches that jointly, breadth-first, which makes the
+first solution it reaches the shortest one. Routes that kill either ball are
+pruned, so no answer needs a restart along the way.
+
+```sh
+python3 tools/solve_level.py 5                      # one level
+python3 tools/solve_level.py --all --verify         # all 40, checked
+python3 tools/solve_level.py --all -o docs/SOLUTIONS.md
+```
+
+The search runs off the pre-decoded `flags[]` table in `source/levels.c` — the
+same bytes `step_ball()` tests — so it can't quietly disagree with the game
+about what a tile blocks. `--verify` then replays each answer through a second,
+separately written simulator driven from the raw `tiles[]` ids, which checks
+the search and the flags decode against each other rather than against
+themselves.
+
+[docs/SOLUTIONS.md](docs/SOLUTIONS.md) is the generated write-up. **Spoilers.**
+
+### Level 27 can't be finished
+
+The search says so, and the level data proves it without searching anything.
+Level 27 contains no blocking tiles at all — only floor, goals and holes — so
+nothing can ever hold one ball while the other moves, and the offset between
+the two is fixed for the whole level. They start 6 columns and 2 rows apart;
+the two goals are 8 columns and 1 row apart. The pair can never be home
+together.
+
+That's the data as the original iOS game shipped it, checked against the
+`switch` in `Double_MazeViewController.m` — tile 15 is a hole there too, sharing
+its `case` with 6, even though it *draws* as four walls. It's the same class of
+loss as the empty `level35.txt`, and probably why the original had a skip
+button. START skips here too, so it isn't a wall in the player's way.
 
 ## Credits and assets
 
