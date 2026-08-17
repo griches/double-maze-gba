@@ -27,6 +27,12 @@ void audio_play(Sound s);
 void audio_music_set(bool on);
 bool audio_music_enabled(void);
 
+// Both take 0-100. The music and the effects come out of completely different
+// hardware -- PSG tone generators versus maxmod's Direct Sound mixer -- so
+// nothing balances them automatically and these are the only way to.
+void audio_set_music_volume(int vol);
+void audio_set_sfx_volume(int vol);
+
 // Diagnostics: the capture pipeline has no way to hear the output, so these
 // let a debug build report how far the sequencer has got and whether the PSG
 // channels say they're sounding.

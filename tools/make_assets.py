@@ -18,6 +18,8 @@ plus gfx/ball.png, gfx/font.png and source/skins.h.
 import colorsys
 import os
 import sys
+from collections import Counter
+
 from PIL import Image
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -392,6 +394,63 @@ def build_sprites(ios):
           "(%d frames)" % len(frames))
 
 
+def flatten_title_field(im):
+    """Replace the title's graded green field with one flat colour.
+
+    The iOS art fades the field about 15% from top to bottom. At 480x320 in
+    24-bit colour that reads as a gradient; at 240x160 through a 16-entry
+    palette of 15-bit colours it reads as a stack of bands, because there is
+    nowhere near the precision to draw it smoothly -- and it spends thirteen
+    of the sixteen slots saying so, which is most of the palette gone on the
+    part of the screen with nothing in it.
+
+    The art is white ink over that field and nothing else, so each pixel is
+    unmixed into a coverage of white over its own row's field colour and then
+    laid back down over the flat one. That keeps the letterforms and their
+    antialiasing exactly as they were; only the field moves.
+    """
+    rgb = im.convert("RGB")
+    w, h = rgb.size
+    px = rgb.load()
+
+    # The field colour of each row is simply its most common green -- the
+    # gradient runs down the image, so a row has only one. Rows the lettering
+    # nearly covers don't have enough of it to be sure, and borrow from the
+    # closest row that does; the gradient is smooth, so that costs a unit or
+    # two at most.
+    seen = {}
+    for y in range(h):
+        greens = Counter(px[x, y] for x in range(w)
+                         if px[x, y][1] > px[x, y][2] + 25)
+        if greens:
+            colour, count = greens.most_common(1)[0]
+            if count >= 30:
+                seen[y] = colour
+    if not seen:
+        raise SystemExit("title art: no green field found to flatten")
+
+    known = sorted(seen)
+    rows = [seen.get(y) or seen[min(known, key=lambda k: abs(k - y))]
+            for y in range(h)]
+
+    # The average of the gradient, so the screen keeps the weight it had.
+    flat = tuple(round(sum(c[i] for c in rows) / h) for i in range(3))
+
+    out = im.copy()
+    op = out.load()
+    for y in range(h):
+        field = rows[y]
+        span = 255 - field[2]        # blue separates ink from field furthest
+        for x in range(w):
+            p = px[x, y]
+            ink = (p[2] - field[2]) / span if span else 0.0
+            ink = 0.0 if ink < 0.0 else (1.0 if ink > 1.0 else ink)
+            op[x, y] = tuple(
+                [round(flat[i] + ink * (255 - flat[i])) for i in range(3)]
+                + [op[x, y][3]])
+    return out
+
+
 def build_title(ios):
     """The title screen as a tilemap, not a bitmap.
 
@@ -399,7 +458,8 @@ def build_title(ios):
     which fits in the same charblock as the game tiles and the font -- so the
     menus and the game can share one video mode with no VRAM reloads.
     """
-    im = load(ios, "title.png").resize((SCREEN_W, SCREEN_H), Image.LANCZOS)
+    im = load(ios, "title.png")
+    im = flatten_title_field(im).resize((SCREEN_W, SCREEN_H), Image.LANCZOS)
     quantise(im).save(os.path.join(GFX, "title.png"))
 
     lines = ["# Title screen: 30x20 tiles plus its map.",

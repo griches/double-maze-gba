@@ -8,7 +8,9 @@
 // volume envelope, so a row costs four register writes at most and nothing at
 // all on the rows in between.
 
-#define PSG_MASTER_VOL 6   // of 7, leaving a little headroom under the effects
+// The loudest the player can ask for -- the reference level everything below
+// is a fraction of.
+#define VOL_MAX 100
 
 // Wave RAM is double-banked: you write the bank that isn't playing, then
 // point the channel at it. Only one waveform is ever used here, so this
@@ -30,6 +32,88 @@
 static bool g_on;
 static int  g_frame;      // frames until the next row
 static int  g_row;
+
+static int  g_vol = VOL_MAX;   // what the player asked for, 0-100
+
+//---------------------------------------------------------------------------
+// volume
+//
+// Two registers scale the tone generators, and only these two: the master
+// volume in REG_SNDDMGCNT, which is (n+1)/8 for n of 0-7, and the two bits of
+// REG_SNDDSCNT that set the generators against Direct Sound at 25, 50 or 100
+// percent. Their product is the whole ladder the hardware can produce.
+//
+// Scaling the note envelopes instead would give more steps, but they are four
+// bits each and the four channels are mixed at different levels, so rounding
+// them separately quietens the parts by different amounts -- the arrangement
+// thins out as it gets quieter, and at the points where the master volume
+// changes step the rounding can even make a higher setting play quieter than
+// the one below it. The ladder below can't: it is a plain product of two
+// exact factors, so it is monotonic by construction and every setting plays
+// the same mix, just further away.
+//
+// Gains are in units of 1/32 -- the ratio's 25% times the master's 1/8 -- so
+// the reference, 100% at master 6, is 28. The one louder rung the hardware can
+// reach, 100% at master 7, is deliberately left off the top: that headroom
+// under the sound effects is what full volume means here.
+
+typedef struct GainStep
+{
+    u8 gain;      // 1/32 of full PSG output
+    u8 ratio;     // SDS_DMG25 / 50 / 100, the low two bits of REG_SNDDSCNT
+    u8 master;    // REG_SNDDMGCNT master volume, 0-7
+} GainStep;
+
+static const GainStep gain_ladder[] = {
+    {  1, SDS_DMG25,  0 }, {  2, SDS_DMG25,  1 }, {  3, SDS_DMG25,  2 },
+    {  4, SDS_DMG25,  3 }, {  5, SDS_DMG25,  4 }, {  6, SDS_DMG25,  5 },
+    {  7, SDS_DMG25,  6 }, {  8, SDS_DMG25,  7 },
+    { 10, SDS_DMG50,  4 }, { 12, SDS_DMG50,  5 }, { 14, SDS_DMG50,  6 },
+    { 16, SDS_DMG50,  7 },
+    { 20, SDS_DMG100, 4 }, { 24, SDS_DMG100, 5 }, { 28, SDS_DMG100, 6 },
+};
+
+#define GAIN_STEPS ((int)(sizeof(gain_ladder) / sizeof(gain_ladder[0])))
+#define GAIN_REF   28   // the last entry: what the music played at before
+
+static void apply_gain(void)
+{
+    // Volume zero unroutes the channels rather than turning them down. There
+    // is no master volume that means silence -- 0 is the quietest step, not
+    // an off switch -- and the sequencer keeps running either way.
+    if (g_vol <= 0)
+    {
+        REG_SNDDSCNT = (REG_SNDDSCNT & ~3) | SDS_DMG25;
+        REG_SNDDMGCNT = SDMG_BUILD_LR(0, 0);
+        return;
+    }
+
+    // Nearest rung, not the one below: the ladder is coarse at the top, and
+    // always rounding down would cost most of a step across that half.
+    const GainStep *best = &gain_ladder[0];
+    int want = GAIN_REF * g_vol;                  // scaled by VOL_MAX
+    int best_err = best->gain * VOL_MAX - want;
+    if (best_err < 0)
+        best_err = -best_err;
+
+    for (int i = 1; i < GAIN_STEPS; i++)
+    {
+        int err = gain_ladder[i].gain * VOL_MAX - want;
+        if (err < 0)
+            err = -err;
+        if (err < best_err)
+        {
+            best = &gain_ladder[i];
+            best_err = err;
+        }
+    }
+
+    // Read-modify-write: the upper bits of this register are maxmod's Direct
+    // Sound settings, and clobbering them would kill the effects.
+    REG_SNDDSCNT = (REG_SNDDSCNT & ~3) | best->ratio;
+    REG_SNDDMGCNT = SDMG_BUILD_LR(SDMG_SQR1 | SDMG_SQR2 | SDMG_WAVE
+                                  | SDMG_NOISE, best->master);
+}
 
 //---------------------------------------------------------------------------
 
@@ -140,12 +224,9 @@ static void silence(void)
 void chiptune_init(void)
 {
     // maxmod has already set the master enable and claimed the Direct Sound
-    // half of REG_SNDDSCNT. Only the bottom two bits are ours -- they scale
-    // the PSG channels against Direct Sound, and default to 25%.
-    REG_SNDDSCNT = (REG_SNDDSCNT & ~3) | SDS_DMG100;
-
-    REG_SNDDMGCNT = SDMG_BUILD_LR(SDMG_SQR1 | SDMG_SQR2 | SDMG_WAVE
-                                  | SDMG_NOISE, PSG_MASTER_VOL);
+    // half of REG_SNDDSCNT. Only the bottom two bits are ours, and apply_gain
+    // owns them along with REG_SNDDMGCNT and the channel routing.
+    apply_gain();
 
     // Channel 1 shares its registers with a frequency sweep. Left at whatever
     // it powers up as, it slides every note out of tune.
@@ -182,6 +263,15 @@ void chiptune_set(bool on)
 bool chiptune_enabled(void)
 {
     return g_on;
+}
+
+void chiptune_set_volume(int vol)
+{
+    if (vol < 0)       vol = 0;
+    if (vol > VOL_MAX) vol = VOL_MAX;
+
+    g_vol = vol;
+    apply_gain();
 }
 
 int chiptune_row(void)

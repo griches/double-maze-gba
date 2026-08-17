@@ -13,6 +13,7 @@ tiles at the same time and you advance.
 | ![Level 5](docs/screenshots/gameplay.png) | ![Level 5 in high contrast](docs/screenshots/contrast.png) |
 | ![Level 14](docs/screenshots/gameplay2.png) | ![You died](docs/screenshots/died.png) |
 | ![Level select](docs/screenshots/level-select.png) | ![Instructions](docs/screenshots/instructions.png) |
+| ![Options](docs/screenshots/options.png) | |
 
 The three tile skins cycle every two levels, as they do in the original. All
 screenshots are captured from the running ROM by `tools/grab_screen.py`.
@@ -22,9 +23,11 @@ see [Contrast](#contrast) below for why the second one exists.
 
 ## Controls
 
-**Title:** A to play, B for instructions, SELECT for credits, START toggles
-music. **L toggles contrast, from any screen.**
+**Title:** A to play, B for instructions, START for options, SELECT for
+credits. **L toggles contrast, from any screen.**
 **Instructions / credits:** any button returns to the title.
+**Options:** up/down to pick a setting, left/right to change it (A works too),
+B or START to go back. Holding left or right runs the volumes along.
 **Level select:** D-pad to move, A to play, B to go back.
 
 **In game:**
@@ -108,7 +111,8 @@ docs/screenshots/        captured from the ROM, used by this README
 
 ## How the screen is put together
 
-Mode 0, one regular background (BG0) on charblock 0 / screenblock 30, plus two
+Mode 0, three regular backgrounds sharing charblock 0 — BG0 the tilemap art on
+screenblock 30, BG1 the text overlay on 29, BG2 the wall bars on 28 — plus two
 16x16 sprites for the balls.
 
 The grid is 15x8 cells of 16x16 pixels — 240x128, so it fills the screen width
@@ -116,19 +120,29 @@ exactly and leaves 32 pixels of vertical slack, split 16 above and 16 below.
 The HUD sits on the bottom row.
 
 Each cell is a **metatile**: a 16x16 block that grit exports as 4 consecutive
-hardware tiles (`-Mw2 -Mh2`), laid out TL, TR, BL, BR. A skin is 21 metatiles —
-the 16 tile ids plus lit variants of the 5 goal types — so 84 hardware tiles.
-All three skins stay resident (252 of the charblock's 512 tiles), which makes
-switching skins a palette-bank change rather than a VRAM upload.
+hardware tiles (`-Mw2 -Mh2`), laid out TL, TR, BL, BR. A skin is 27 metatiles —
+the 16 tile ids, lit variants of the 5 goal types, and 6 carrying a lip — so
+108 hardware tiles. All three skins stay resident, which makes switching skins
+a palette-bank change rather than a VRAM upload.
 
-Charblock 0 holds everything: three skins (252 tiles), the font (48) and the
-title art (133), for 433 of the 512 available. That means the menus and the
-game share one video mode with no VRAM reloads between them — the title screen
-is a tilemap, not a bitmap.
+Charblock 0 holds everything: three skins (324 tiles), the font (48), the title
+art (127) and the wall bars (64), for 563. A screen entry's tile field is 10
+bits, so a background reaches 1024 tiles from its charblock base — two
+charblocks' worth. That means the menus and the game share one video mode with
+no VRAM reloads between them; the title screen is a tilemap, not a bitmap.
 
-BG palette banks: 0 purple, 1 orange, 2 green, 3 font, 4 title. Void tiles are
-transparent, so `pal_bg_mem[0]` carries the skin's backdrop colour — sampled
-from the matching iOS background image.
+BG palette banks: 0 purple, 1 orange, 2 green, 3 font, 4 title, 5 walls. Void
+tiles are transparent, so `pal_bg_mem[0]` carries the skin's backdrop colour —
+sampled from the matching iOS background image.
+
+The title art is 127 tiles rather than 133 because the field behind it is one
+flat green. The iOS artwork fades it about 15% from top to bottom, which at
+240x160 through a 16-entry palette of 15-bit colours can't be drawn smoothly —
+it came out as a stack of visible bands, and it spent thirteen of the sixteen
+palette slots doing it. `make_assets.py` flattens the field before quantising,
+unmixing each pixel into a coverage of white ink over its own row's colour so
+the letterforms and their antialiasing survive the swap. grit's `-mRtf` then
+folds the duplicate tiles a flat field is made of.
 
 Like the original, the skin advances every two levels: `floor(index / 2) % 3`.
 
@@ -278,6 +292,31 @@ Sound channels. 8-bit mono at 11025 Hz, 48KB in total. `tools/make_audio.py`
 converts them, using macOS's built-in `afconvert`. (The Homebrew `ffmpeg` on
 this machine is broken — it can't find `libx265.215.dylib`.)
 
+### Balance
+
+The music and the effects come out of completely different hardware — PSG tone
+generators against maxmod's Direct Sound mixer — so nothing balances them, and
+out of the box the music drowned the effects. The options screen carries a
+level for each, 0 to 100, and the music now defaults to 55.
+
+The effects side is trivial: maxmod has a linear global level, so 0–100 scales
+straight onto it. The music side isn't. Two registers scale the tone
+generators and only two — the 3-bit master volume in `SOUNDCNT_L`, which is
+`(n+1)/8`, and the two bits of `SOUNDCNT_H` that set the generators against
+Direct Sound at 25, 50 or 100 percent. Their product is every level the
+hardware can make: fifteen rungs between silence and full.
+
+The obvious way to get more of them is to scale the note envelopes too, and
+it's a trap. They're four bits each and the four channels are mixed at
+different levels, so rounding them separately quietens the parts by different
+amounts — the arrangement thins out as it gets quieter — and where the master
+volume changes step, that rounding can make a *higher* setting play quieter
+than the one below it. Turning the music up made it fade. `chiptune.c` walks
+the fifteen-rung ladder instead: a plain product of two exact factors, so it's
+monotonic by construction and every setting plays the same mix, just further
+away. Volume zero unroutes the channels rather than turning them down, because
+master volume 0 is the quietest step and not an off switch.
+
 ## Music
 
 The music is not a recording. It's a score, played on the GBA's four PSG
@@ -324,14 +363,16 @@ clobbering it would silently kill the sound effects.
 ## Save data
 
 32KB cartridge SRAM at `0x0E000000`, holding the completed-level flags, the
-level-select cursor position, the music setting and the contrast setting,
-behind a magic number and a checksum. Progress is written the moment a level is
-solved.
+level-select cursor position, the contrast setting and the three audio
+settings, behind a magic number and a checksum. Progress is written the moment
+a level is solved, and the options the moment they change.
 
-The block is versioned, and adding the contrast flag grew it. `save.c` reads a
-version 2 block back into the current struct rather than rejecting it, so a
-cartridge written by an older build keeps its forty levels of progress — a
-display setting isn't worth wiping a save for.
+The block is versioned, and it has grown twice — once for the contrast flag,
+once for the two volumes. `save.c` reads a version 2 or version 3 block back
+into the current struct rather than rejecting it, leaving whatever that layout
+didn't have at its default, so a cartridge written by an older build keeps its
+forty levels of progress. A display setting or a pair of sliders isn't worth
+wiping a save for.
 
 The ROM has to carry the string `SRAM_V113` for emulators and flashcarts to
 detect the backup hardware. Getting it to survive is fiddlier than it looks:

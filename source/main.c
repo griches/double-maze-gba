@@ -44,12 +44,39 @@ typedef enum AppState
 {
     APP_TITLE,
     APP_INSTRUCTIONS,
+    APP_OPTIONS,
     APP_CREDITS,
     APP_SELECT,
     APP_PLAY,
     APP_DEATH,
     APP_WIN,
 } AppState;
+
+// The options screen. Rows are drawn in this order and the cursor walks them.
+typedef enum OptionRow
+{
+    OPT_MUSIC,
+    OPT_MUSIC_VOL,
+    OPT_SFX_VOL,
+    OPT_CONTRAST,
+    OPT_COUNT
+} OptionRow;
+
+#define OPT_FIRST_ROW  4    // text rows; every other one, for the drop shadow
+#define OPT_ROW_STEP   2
+#define OPT_CURSOR_COL 2
+#define OPT_LABEL_COL  4
+#define OPT_VALUE_END  26   // values are right-aligned to end just before here
+
+// Twenty steps across the range. Fine enough to balance against the effects,
+// coarse enough that crossing it doesn't take a minute.
+#define OPT_VOL_STEP   5
+#define OPT_VOL_MAX    100
+
+// Held left/right repeats, after a pause long enough that a single press can
+// still nudge one step.
+#define OPT_REPEAT_WAIT 16
+#define OPT_REPEAT_RATE 4
 
 typedef struct Ball
 {
@@ -67,6 +94,7 @@ static Ball      g_ball[2];
 static AppState  g_state;
 static int       g_timer;
 static int       g_menu_cursor;
+static int       g_opt_cursor;
 static bool      g_was_on_goal[2];   // goal state before the current step
 static OBJ_ATTR  g_obj_buffer[128];
 
@@ -313,11 +341,8 @@ static void draw_title(void)
     render_title_art();
     render_text_centred(10, "A - PLAY");
     render_text_centred(12, "B - INSTRUCTIONS");
-    render_text_centred(14, "SELECT - CREDITS");
-    render_text_centred(16, g_save.music_on ? "START - MUSIC ON"
-                                            : "START - MUSIC OFF");
-    render_text_centred(18, g_save.high_contrast ? "L - CONTRAST HIGH"
-                                                 : "L - CONTRAST NORMAL");
+    render_text_centred(14, "START - OPTIONS");
+    render_text_centred(16, "SELECT - CREDITS");
 #ifdef AUDIO_DEBUG
     // Reports whether the music effect actually took a mixer channel, since
     // the capture pipeline can't hear anything. Build with
@@ -348,6 +373,64 @@ static void draw_instructions(void)
     render_text(3, 14, "LAND BOTH ON GOALS.");
 
     render_text_centred(17, "B - BACK");
+}
+
+//--- options ---------------------------------------------------------------
+
+static int opt_text_row(int row)
+{
+    return OPT_FIRST_ROW + row * OPT_ROW_STEP;
+}
+
+// The font has digits but nothing that formats them, so numbers are built a
+// character at a time and right-aligned by hand.
+static void draw_opt_number(int row, int n)
+{
+    char buf[4];
+    int len = 0;
+
+    if (n >= 100) buf[len++] = '0' + (n / 100) % 10;
+    if (n >= 10)  buf[len++] = '0' + (n / 10) % 10;
+    buf[len++] = '0' + n % 10;
+    buf[len] = '\0';
+
+    render_text(OPT_VALUE_END - len, opt_text_row(row), buf);
+}
+
+static void draw_opt_word(int row, const char *s)
+{
+    int len = 0;
+    while (s[len])
+        len++;
+
+    render_text(OPT_VALUE_END - len, opt_text_row(row), s);
+}
+
+static void draw_options(void)
+{
+    render_plain(1);
+    render_text_centred(1, "OPTIONS");
+
+    render_text(OPT_LABEL_COL, opt_text_row(OPT_MUSIC),     "MUSIC");
+    render_text(OPT_LABEL_COL, opt_text_row(OPT_MUSIC_VOL), "MUSIC VOL");
+    render_text(OPT_LABEL_COL, opt_text_row(OPT_SFX_VOL),   "SOUND VOL");
+    render_text(OPT_LABEL_COL, opt_text_row(OPT_CONTRAST),  "CONTRAST");
+
+    draw_opt_word(OPT_MUSIC, g_save.music_on ? "ON" : "OFF");
+    draw_opt_number(OPT_MUSIC_VOL, g_save.music_volume);
+    draw_opt_number(OPT_SFX_VOL, g_save.sfx_volume);
+    draw_opt_word(OPT_CONTRAST, g_save.high_contrast ? "HIGH" : "NORMAL");
+
+    render_text(OPT_CURSOR_COL, opt_text_row(g_opt_cursor), ">");
+
+    // What the contrast setting is for. It isn't a preference so much as a
+    // rescue for playing on an original GBA's unlit screen, and nothing else
+    // in the game says so.
+    render_text_centred(12, "HIGH CONTRAST LIFTS THE");
+    render_text_centred(14, "PALETTE FOR UNLIT SCREENS");
+    render_text_centred(16, "L TOGGLES IT ANYWHERE");
+
+    render_text_centred(18, "B - BACK");
 }
 
 // Straight from the iOS credits view.
@@ -399,6 +482,7 @@ static void goto_state(AppState s)
     {
     case APP_TITLE:  draw_title();  break;
     case APP_INSTRUCTIONS:   draw_instructions();   break;
+    case APP_OPTIONS: draw_options(); break;
     case APP_CREDITS: draw_credits(); break;
     case APP_SELECT: draw_select(); break;
     default: break;
@@ -458,8 +542,11 @@ static void toggle_contrast(void)
     save_store();
     audio_play(SND_UI);
 
+    // Both screens name the scheme that's on, so both have to be repainted.
     if (g_state == APP_TITLE)
-        draw_title();   // the menu line reports which scheme is on
+        draw_title();
+    else if (g_state == APP_OPTIONS)
+        draw_options();
 }
 
 //---------------------------------------------------------------------------
@@ -478,18 +565,16 @@ static void input_title(void)
         audio_play(SND_PAGE);
         fx_to_state(APP_INSTRUCTIONS, FX_MENU);
     }
+    else if (key_hit(KEY_START))
+    {
+        audio_play(SND_PAGE);
+        g_opt_cursor = 0;
+        fx_to_state(APP_OPTIONS, FX_MENU);
+    }
     else if (key_hit(KEY_SELECT))
     {
         audio_play(SND_PAGE);
         fx_to_state(APP_CREDITS, FX_MENU);
-    }
-    else if (key_hit(KEY_START))
-    {
-        audio_play(SND_UI);
-        g_save.music_on = !g_save.music_on;
-        audio_music_set(g_save.music_on);
-        save_store();
-        draw_title();
     }
 }
 
@@ -502,6 +587,129 @@ static void input_page(void)
         audio_play(SND_PAGE);
         fx_to_state(APP_TITLE, FX_MENU);
     }
+}
+
+// Left/right with hold-to-repeat. Returns -1, 0 or +1 for each step the value
+// should move this frame; the initial press always counts, so a tap is one
+// step however briefly it's held.
+static int options_horz_step(void)
+{
+    static int timer;
+    static int dir;
+
+    int now = key_tri_horz();
+
+    if (now != dir)
+    {
+        dir = now;
+        timer = OPT_REPEAT_WAIT;
+        return now;
+    }
+
+    if (dir == 0 || --timer > 0)
+        return 0;
+
+    timer = OPT_REPEAT_RATE;
+    return dir;
+}
+
+static int clamp_volume(int v)
+{
+    if (v < 0)           return 0;
+    if (v > OPT_VOL_MAX) return OPT_VOL_MAX;
+    return v;
+}
+
+// `fresh` distinguishes a real press from a repeat tick. The volumes want the
+// repeat; the two toggles must not have it, or holding a direction would flap
+// them dozens of times a second.
+static bool options_change(int dir, bool fresh)
+{
+    switch (g_opt_cursor)
+    {
+    case OPT_MUSIC:
+        if (!fresh)
+            return false;
+        g_save.music_on = !g_save.music_on;
+        audio_music_set(g_save.music_on);
+        return true;
+
+    case OPT_MUSIC_VOL:
+    {
+        int next = clamp_volume(g_save.music_volume + dir * OPT_VOL_STEP);
+        if (next == g_save.music_volume)
+            return false;
+        g_save.music_volume = (u8)next;
+        audio_set_music_volume(next);
+        return true;
+    }
+
+    case OPT_SFX_VOL:
+    {
+        int next = clamp_volume(g_save.sfx_volume + dir * OPT_VOL_STEP);
+        if (next == g_save.sfx_volume)
+            return false;
+        g_save.sfx_volume = (u8)next;
+        audio_set_sfx_volume(next);
+        return true;
+    }
+
+    case OPT_CONTRAST:
+        if (!fresh)
+            return false;
+        g_save.high_contrast = !g_save.high_contrast;
+        render_set_contrast(g_save.high_contrast);
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+static void input_options(void)
+{
+    if (key_hit(KEY_UP) || key_hit(KEY_DOWN))
+    {
+        g_opt_cursor += key_hit(KEY_DOWN) ? 1 : -1;
+        if (g_opt_cursor < 0)
+            g_opt_cursor = OPT_COUNT - 1;
+        else if (g_opt_cursor >= OPT_COUNT)
+            g_opt_cursor = 0;
+
+        audio_play(SND_UI);
+        draw_options();
+        return;
+    }
+
+    // START closes the screen as well as opening it; B is what the screen
+    // advertises, since that's the way back everywhere else in the game.
+    if (key_hit(KEY_B) || key_hit(KEY_START))
+    {
+        audio_play(SND_PAGE);
+        fx_to_state(APP_TITLE, FX_MENU);
+        return;
+    }
+
+    // A does what right does, so the toggles work without knowing that the
+    // D-pad is what moves them.
+    bool fresh = key_hit(KEY_LEFT) || key_hit(KEY_RIGHT) || key_hit(KEY_A);
+    int dir = options_horz_step();
+    if (dir == 0 && key_hit(KEY_A))
+        dir = 1;
+
+    if (dir == 0 || !options_change(dir, fresh))
+        return;
+
+    // The click is the point on the effects row -- it's the only way to hear
+    // what the new level sounds like. Playing it on every repeat tick would
+    // machine-gun, so it only follows a real press.
+    if (fresh)
+        audio_play(SND_UI);
+
+    // Settings are worth keeping even if the console goes off from this
+    // screen, and an SRAM write is a few dozen byte stores.
+    save_store();
+    draw_options();
 }
 
 static void input_select(void)
@@ -632,6 +840,11 @@ int main(void)
     render_set_contrast(g_save.high_contrast);
     render_init();
     audio_init();
+
+    // Levels before the switch: turning the music on at the wrong volume, even
+    // for a frame, is exactly the thing the options screen exists to fix.
+    audio_set_music_volume(g_save.music_volume);
+    audio_set_sfx_volume(g_save.sfx_volume);
     audio_music_set(g_save.music_on);
 
     // render_init owns the palette; only the tiles are loaded here.
@@ -673,6 +886,7 @@ int main(void)
         {
         case APP_TITLE:   input_title(); break;
         case APP_INSTRUCTIONS:    input_page();  break;
+        case APP_OPTIONS: input_options(); break;
         case APP_CREDITS: input_page();  break;
         case APP_SELECT: input_select(); break;
 

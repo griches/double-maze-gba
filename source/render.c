@@ -24,16 +24,18 @@
 // A screen entry's tile field is 10 bits, so a background reaches 1024 tiles
 // from its charblock base -- two charblocks' worth, and well clear of the
 // screenblocks at 29/30 and of OBJ VRAM. Three skins plus the font and title
-// art currently come to 506. Index linearly rather than through tile_mem[],
+// art currently come to 499. Index linearly rather than through tile_mem[],
 // whose CHARBLOCK type stops at 512, so adding metatiles can't quietly run
 // off the end of it.
 #define BG_TILE(n) (((TILE *)MEM_VRAM) + (n))
 
 // Charblock 0 layout.
 #define SKIN_BASE  0
-#define FONT_BASE  (SKIN_COUNT * SKIN_TILES)   // 252
+#define FONT_BASE  (SKIN_COUNT * SKIN_TILES)   // 324
 #define TITLE_BASE (FONT_BASE + FONT_GLYPH_COUNT)
-#define WALL_BASE  (TITLE_BASE + 134)          // after the title art
+// After the title art. Flattening its background dropped it from 134 tiles to
+// 127 -- grit's -mRtf folds the duplicates, and a flat field is all duplicates.
+#define WALL_BASE  (TITLE_BASE + 127)
 
 // BG palette banks.
 #define FONT_BANK  3

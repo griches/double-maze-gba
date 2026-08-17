@@ -15,6 +15,11 @@ void chiptune_init(void);
 void chiptune_set(bool on);
 bool chiptune_enabled(void);
 
+// Overall level of the music, 0-100. Split across the PSG's master volume and
+// the per-channel envelopes, so the scale is finer than the eight steps the
+// master register alone would give -- see chiptune.c.
+void chiptune_set_volume(int vol);
+
 // Once per frame, alongside audio_frame().
 void chiptune_frame(void);
 

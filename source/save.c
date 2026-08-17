@@ -24,7 +24,7 @@ static void keep_save_signature(void)
 }
 
 #define SAVE_MAGIC   0x324D4244u   // 'DBM2'
-#define SAVE_VERSION 3   // bumped when the contrast toggle joined SaveData
+#define SAVE_VERSION 4   // bumped when the two volume levels joined SaveData
 
 typedef struct SaveBlock
 {
@@ -35,16 +35,35 @@ typedef struct SaveBlock
     u32      checksum;
 } SaveBlock;
 
-// Version 2 is the same thing without high_contrast. Kept so a cartridge
-// written by an older build keeps its progress -- throwing a player's forty
-// levels away over a display setting isn't a trade worth making. Version 1
-// isn't here: completed[] was a different length, so nothing lines up.
+// Older layouts, kept so a cartridge written by an older build keeps its
+// progress -- throwing a player's forty levels away over a display setting or
+// a pair of volume sliders isn't a trade worth making. Version 3 is the
+// current struct without the volumes, version 2 that without high_contrast.
+// Version 1 isn't here: completed[] was a different length, so nothing lines
+// up.
+typedef struct SaveDataV3
+{
+    u8 completed[LEVEL_COUNT];
+    u8 last_level;
+    u8 music_on;
+    u8 high_contrast;
+} SaveDataV3;
+
 typedef struct SaveDataV2
 {
     u8 completed[LEVEL_COUNT];
     u8 last_level;
     u8 music_on;
 } SaveDataV2;
+
+typedef struct SaveBlockV3
+{
+    u32        magic;
+    u8         version;
+    u8         pad[3];
+    SaveDataV3 data;
+    u32        checksum;
+} SaveBlockV3;
 
 typedef struct SaveBlockV2
 {
@@ -91,10 +110,29 @@ static void apply_defaults(void)
     g_save.music_on = 1;
     g_save.last_level = 0;
     g_save.high_contrast = 0;
+    g_save.music_volume = MUSIC_VOLUME_DEFAULT;
+    g_save.sfx_volume = SFX_VOLUME_DEFAULT;
 }
 
-// Reads a version 2 block over the top of the defaults. Returns false if
-// there isn't a valid one there.
+// Reads an older block over the top of the defaults, leaving any field the old
+// layout didn't have at its default. Returns false if there isn't a valid
+// block of that version there.
+static bool load_v3(void)
+{
+    SaveBlockV3 old;
+    sram_read(&old, sizeof(old));
+
+    if (old.magic != SAVE_MAGIC || old.version != 3 ||
+        old.checksum != checksum_of(&old, sizeof(old)))
+        return false;
+
+    memcpy(g_save.completed, old.data.completed, sizeof(g_save.completed));
+    g_save.last_level = old.data.last_level;
+    g_save.music_on = old.data.music_on;
+    g_save.high_contrast = old.data.high_contrast;
+    return true;
+}
+
 static bool load_v2(void)
 {
     SaveBlockV2 old;
@@ -127,13 +165,18 @@ bool save_load(void)
     else
     {
         apply_defaults();
-        found = load_v2();
+        found = load_v3() || load_v2();
     }
 
     // A corrupt-but-checksumming save shouldn't be able to index off the end
-    // of the level table.
+    // of the level table, or leave a volume outside the range the options
+    // screen can move it back through.
     if (g_save.last_level >= LEVEL_COUNT)
         g_save.last_level = 0;
+    if (g_save.music_volume > 100)
+        g_save.music_volume = MUSIC_VOLUME_DEFAULT;
+    if (g_save.sfx_volume > 100)
+        g_save.sfx_volume = SFX_VOLUME_DEFAULT;
 
     return found;
 }

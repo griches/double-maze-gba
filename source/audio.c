@@ -15,6 +15,11 @@
 #define VOL_FULL     255
 #define PAN_CENTRE   128
 
+// maxmod's global effects level. Per-effect volume stays at VOL_FULL and this
+// is what the options screen drives, so one setting moves everything.
+#define MM_VOL_MAX   1024
+#define VOL_SCALE    100         // the 0-100 the player sees
+
 // Game event -> soundbank sample. The duplication mirrors the original, which
 // used the same stone-on-metal hit for both of its movement slots.
 static const mm_word sample_for[SND_COUNT] = {
@@ -34,13 +39,14 @@ void audio_init(void)
     mmInitDefault((mm_addr)soundbank_bin, MIX_CHANNELS);
 
     // Set explicitly rather than trusting maxmod's default, so a silent build
-    // can never be blamed on the global effects level. Range is 0..1024.
-    mmSetEffectsVolume(1024);
+    // can never be blamed on the global effects level.
+    audio_set_sfx_volume(VOL_SCALE);
 
     // After maxmod: it owns the master sound enable and the Direct Sound half
     // of the mixing register, and chiptune_init has to layer on top of both.
+    // Music is left off and silent here; the caller turns it on at the levels
+    // read back from the save.
     chiptune_init();
-    audio_music_set(true);
 }
 
 void audio_frame(void)
@@ -74,6 +80,21 @@ void audio_music_set(bool on)
 bool audio_music_enabled(void)
 {
     return chiptune_enabled();
+}
+
+void audio_set_music_volume(int vol)
+{
+    chiptune_set_volume(vol);
+}
+
+// The effects run through maxmod's mixer, which already has a linear global
+// level -- so unlike the music, this is the whole implementation.
+void audio_set_sfx_volume(int vol)
+{
+    if (vol < 0)         vol = 0;
+    if (vol > VOL_SCALE) vol = VOL_SCALE;
+
+    mmSetEffectsVolume(vol * MM_VOL_MAX / VOL_SCALE);
 }
 
 int audio_music_row(void)
